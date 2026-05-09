@@ -10,7 +10,7 @@
     "icons:render": "node --experimental-strip-types scripts/render-icons.mjs",
     "icons:static": "python3 scripts/render-static-pngs.py",
     "install:hook": "bash scripts/install-hook.sh",
-    "install:hook:windows": "bash scripts/install-hook-windows.sh",
+    "install:hook:windows": "bash scripts/install-hook.sh --target=windows",
     "sd:link": "bash scripts/link-plugin.sh",
     "sd:unlink": "bash scripts/unlink-plugin.sh",
     "sd:validate": "cross-env HOME=/mnt/c/Users/julie pnpm exec streamdeck validate com.julien.claudesessions.sdPlugin",
