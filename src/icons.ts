@@ -1,11 +1,12 @@
-export type SessionState = "working" | "idle" | "awaiting" | "finished" | "empty";
+export type SessionState = "working" | "idle" | "awaiting" | "awaiting_plan" | "finished" | "empty";
 
 const PALETTE: Record<SessionState, { bg: string; accent: string; label: string }> = {
-  working:  { bg: "#0f1115", accent: "#fbbf24", label: "#fde68a" }, // amber, animated
-  idle:     { bg: "#0f1115", accent: "#3b82f6", label: "#bfdbfe" }, // blue
-  awaiting: { bg: "#1a1208", accent: "#f97316", label: "#fed7aa" }, // orange, pulsing
-  finished: { bg: "#0a1410", accent: "#22c55e", label: "#bbf7d0" }, // green check
-  empty:    { bg: "#0a0b0e", accent: "#374151", label: "#4b5563" },
+  working:       { bg: "#0f1115", accent: "#fbbf24", label: "#fde68a" }, // amber, animated
+  idle:          { bg: "#0f1115", accent: "#3b82f6", label: "#bfdbfe" }, // blue
+  awaiting:      { bg: "#1a1208", accent: "#f97316", label: "#fed7aa" }, // orange, pulsing — permission
+  awaiting_plan: { bg: "#15102a", accent: "#a78bfa", label: "#ddd6fe" }, // violet, pulsing — plan approval
+  finished:      { bg: "#0a1410", accent: "#22c55e", label: "#bbf7d0" }, // green check
+  empty:         { bg: "#0a0b0e", accent: "#374151", label: "#4b5563" },
 };
 
 const ESC: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
@@ -118,6 +119,24 @@ function awaitingPulse(frame: number, color: string): string {
 <circle cx="72" cy="78" r="3" fill="${color}"/>`;
 }
 
+function planPulse(frame: number, color: string): string {
+  // Pulsing document/clipboard outline with a checklist inside, signalling
+  // "approve this plan". Same beat as awaitingPulse so the two read as a
+  // matched pair (orange = permission, violet = plan approval).
+  const phase = frame / ANIMATION_FRAMES;
+  const t = phase < 0.5 ? phase * 2 : (1 - phase) * 2;
+  const opacity = 0.55 + t * 0.45;
+  const stroke = (3 + t * 1.5).toFixed(1);
+  // Document body (rounded rect 44x52) with a folded corner.
+  return `<g opacity="${opacity.toFixed(2)}">
+<path d="M50 38 H86 a4 4 0 0 1 4 4 V82 a4 4 0 0 1 -4 4 H54 a4 4 0 0 1 -4 -4 V42 a4 4 0 0 1 4 -4 z" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-linejoin="round"/>
+<path d="M82 38 V46 H90" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-linejoin="round"/>
+</g>
+<path d="M58 56 L62 60 L70 52" fill="none" stroke="${color}" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+<line x1="58" y1="68" x2="80" y2="68" stroke="${color}" stroke-width="3" stroke-linecap="round" opacity="0.7"/>
+<line x1="58" y1="76" x2="76" y2="76" stroke="${color}" stroke-width="3" stroke-linecap="round" opacity="0.5"/>`;
+}
+
 function motif(state: SessionState, color: string, frame: number): string {
   switch (state) {
     case "working":
@@ -127,6 +146,8 @@ function motif(state: SessionState, color: string, frame: number): string {
 <rect x="46" y="80" width="52" height="5" rx="2.5" fill="${color}"/>`;
     case "awaiting":
       return awaitingPulse(frame, color);
+    case "awaiting_plan":
+      return planPulse(frame, color);
     case "finished":
       return `<circle cx="72" cy="60" r="28" fill="${color}" opacity="0.18"/>
 <circle cx="72" cy="60" r="28" fill="none" stroke="${color}" stroke-width="3.5" opacity="0.85"/>
@@ -207,7 +228,7 @@ ${line2Svg}
 
 /** True when the icon's visual depends on `frame` or `now` and must be re-rendered often. */
 export function iconNeedsAnimation(state: SessionState, label: string): boolean {
-  if (state === "working" || state === "awaiting") return true;
+  if (state === "working" || state === "awaiting" || state === "awaiting_plan") return true;
   // Marquee may apply to label even on static states.
   const { top, line1, line2 } = state === "empty" ? { top: "free slot", line1: "", line2: "" } : splitLabel(label);
   if (approxWidth(top, TOP_FONT) > VIEWPORT_W) return true;
@@ -216,5 +237,6 @@ export function iconNeedsAnimation(state: SessionState, label: string): boolean 
   return false;
 }
 
-/** @deprecated use {@link iconNeedsAnimation}. Kept so plugin.ts compiles incrementally. */
-export const isAnimated = (s: SessionState) => s === "working" || s === "awaiting";
+/** True when the icon's motif uses `frame` (independent of marquee). */
+export const isAnimated = (s: SessionState) =>
+  s === "working" || s === "awaiting" || s === "awaiting_plan";

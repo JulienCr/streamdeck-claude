@@ -29,6 +29,10 @@ export let lastReadError: string | undefined;
 
 /** "Awaiting permission" notify file is considered fresh for this long. */
 const NOTIFY_TTL_MS = 60_000;
+/** "Awaiting plan approval" file gets more leeway — users sometimes leave plans
+ *  un-approved while they read other things, and we explicitly clear the file
+ *  on PostToolUse so TTL is just a safety net. */
+const PLAN_TTL_MS = 30 * 60_000;
 
 interface RawSession {
   pid: number;
@@ -48,7 +52,10 @@ export interface SessionInfo {
   label: string;
   startedAt: number;
   rawStatus: "busy" | "idle";
+  /** Set if a fresh "awaiting permission" notify file exists. */
   awaiting: boolean;
+  /** Set if a fresh "awaiting plan approval" notify file exists. */
+  awaitingPlan: boolean;
   origin: SessionOrigin;
 }
 
@@ -95,6 +102,15 @@ async function readOneSource(src: SessionSourceDir): Promise<SessionInfo[]> {
           // no notify file
         }
 
+        let awaitingPlan = false;
+        try {
+          const planStat = await stat(join(src.path, `${raw.sessionId}.plan.json`));
+          // Plan approval can sit untouched for a long time — be more permissive than notify.
+          awaitingPlan = Date.now() - planStat.mtimeMs < PLAN_TTL_MS;
+        } catch {
+          // no plan file
+        }
+
         out.push({
           pid: raw.pid,
           sessionId: raw.sessionId,
@@ -103,6 +119,7 @@ async function readOneSource(src: SessionSourceDir): Promise<SessionInfo[]> {
           startedAt: typeof raw.startedAt === "number" ? raw.startedAt : 0,
           rawStatus: status,
           awaiting,
+          awaitingPlan,
           origin: src.origin,
         });
       }),
@@ -118,10 +135,12 @@ export async function readAllSessions(): Promise<SessionInfo[]> {
   return results.flat();
 }
 
-/** State for the icon, derived from session status + notify presence + liveness. */
+/** State for the icon, derived from session status + notify/plan presence + liveness.
+ *  Priority when idle: plan-approval > permission-prompt > plain idle. */
 export function deriveState(s: SessionInfo, alive: boolean): SessionState {
   if (!alive) return "finished";
-  if (s.awaiting && s.rawStatus === "idle") return "awaiting";
+  if (s.rawStatus === "idle" && s.awaitingPlan) return "awaiting_plan";
+  if (s.rawStatus === "idle" && s.awaiting) return "awaiting";
   if (s.rawStatus === "busy") return "working";
   return "idle";
 }

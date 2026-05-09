@@ -1,5 +1,5 @@
 import streamDeck, { LogLevel } from "@elgato/streamdeck";
-import { ANIMATION_FRAMES, iconNeedsAnimation, renderIcon, type SessionState } from "./icons.js";
+import { ANIMATION_FRAMES, iconNeedsAnimation, isAnimated, renderIcon, type SessionState } from "./icons.js";
 import { SlotAction } from "./slot-action.js";
 import {
   deriveState,
@@ -134,7 +134,7 @@ async function render(): Promise<void> {
     const slotIndex = i + 1;
     const state = entry?.state ?? "empty";
     const label = entry?.session.label ?? "";
-    const useFrame = state === "working" || state === "awaiting" ? frame : 0;
+    const useFrame = isAnimated(state) ? frame : 0;
 
     const svg = entry
       ? renderIcon({ state, slot: slotIndex, label, frame: useFrame })
