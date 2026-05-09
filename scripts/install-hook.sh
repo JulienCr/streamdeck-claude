@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
-# Idempotently merges the streamdeck-claude Notification hook into the
-# user-global ~/.claude/settings.json. Safe to re-run.
+# Idempotently merges the streamdeck-claude hook into the user-global
+# ~/.claude/settings.json. Same script command is registered for three events:
+#   Notification                            (no matcher)  -> "awaiting permission"
+#   PreToolUse   matcher=ExitPlanMode                     -> "awaiting plan approval"
+#   PostToolUse  matcher=ExitPlanMode                     -> clear plan-approval flag
+#
+# Safe to re-run.
+
 set -euo pipefail
 
 SETTINGS="${HOME}/.claude/settings.json"
@@ -14,25 +20,31 @@ if [ ! -f "$SETTINGS" ]; then
   echo "{}" > "$SETTINGS"
 fi
 
-# Backup once per day.
 BACKUP="${SETTINGS}.bak.$(date +%Y%m%d)"
 [ -f "$BACKUP" ] || cp "$SETTINGS" "$BACKUP"
 
-# Merge: ensure .hooks.Notification contains an entry whose .hooks[].command == HOOK_CMD.
-TMP="$(mktemp)"
-jq --arg cmd "$HOOK_CMD" '
+# jq filter that idempotently registers our command for one event/matcher pair.
+JQ_FILTER='
   .hooks //= {}
-  | .hooks.Notification //= []
-  | if any(.hooks.Notification[]?; (.hooks // []) | any(.command == $cmd))
+  | .hooks[$event] //= []
+  | if any(.hooks[$event][]?; (.matcher // "") == $matcher and ((.hooks // []) | any(.command == $cmd)))
     then .
-    else .hooks.Notification += [{
-      "matcher": "",
-      "hooks": [{"type": "command", "command": $cmd}]
-    }]
+    else .hooks[$event] += [{"matcher": $matcher, "hooks": [{"type": "command", "command": $cmd}]}]
     end
-' "$SETTINGS" > "$TMP"
+'
 
-mv "$TMP" "$SETTINGS"
-echo "Notification hook installed:"
+merge() {
+  local event="$1" matcher="$2" tmp
+  tmp="$(mktemp)"
+  jq --arg event "$event" --arg matcher "$matcher" --arg cmd "$HOOK_CMD" "$JQ_FILTER" "$SETTINGS" > "$tmp"
+  mv "$tmp" "$SETTINGS"
+}
+
+merge "Notification" ""
+merge "PreToolUse"   "ExitPlanMode"
+merge "PostToolUse"  "ExitPlanMode"
+
+echo "Hook command:"
 echo "  $HOOK_CMD"
-echo "Settings file: $SETTINGS (backup at $BACKUP)"
+echo "Registered for: Notification, PreToolUse[ExitPlanMode], PostToolUse[ExitPlanMode]"
+echo "Settings: $SETTINGS  (backup at $BACKUP)"

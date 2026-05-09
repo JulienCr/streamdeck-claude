@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
-# Idempotently installs the Notification hook for Windows-native Claude Code.
+# Idempotently installs the Notification + plan-approval hooks for
+# Windows-native Claude Code.
 #
-# Copies hooks/notification.ps1 to %USERPROFILE%\.claude\hooks\ and merges the
-# corresponding hook entry into %USERPROFILE%\.claude\settings.json.
-# Works from WSL — both targets are accessible through /mnt/c.
+# Copies hooks/notification.ps1 to %USERPROFILE%\.claude\hooks\ and merges
+# three entries into %USERPROFILE%\.claude\settings.json:
+#   Notification                          -> awaiting permission
+#   PreToolUse  matcher=ExitPlanMode      -> awaiting plan approval
+#   PostToolUse matcher=ExitPlanMode      -> clear plan-approval flag
 #
-# Re-run is safe; the merge is idempotent on the exact command string.
+# Runs from WSL — both targets are accessible through /mnt/c. Re-run is safe.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -33,27 +36,32 @@ command cp -f "$SOURCE_PS1" "$WIN_HOOK_FILE"
 echo "Copied hook script:"
 echo "  $WIN_HOOK_FILE"
 
-# Settings file might not exist yet on a fresh install.
 [ -f "$WIN_SETTINGS" ] || echo "{}" > "$WIN_SETTINGS"
 
 BACKUP="${WIN_SETTINGS}.bak.$(date +%Y%m%d)"
 [ -f "$BACKUP" ] || cp "$WIN_SETTINGS" "$BACKUP"
 
-TMP="$(mktemp)"
-jq --arg cmd "$HOOK_CMD" '
+JQ_FILTER='
   .hooks //= {}
-  | .hooks.Notification //= []
-  | if any(.hooks.Notification[]?; (.hooks // []) | any(.command == $cmd))
+  | .hooks[$event] //= []
+  | if any(.hooks[$event][]?; (.matcher // "") == $matcher and ((.hooks // []) | any(.command == $cmd)))
     then .
-    else .hooks.Notification += [{
-      "matcher": "",
-      "hooks": [{"type": "command", "command": $cmd}]
-    }]
+    else .hooks[$event] += [{"matcher": $matcher, "hooks": [{"type": "command", "command": $cmd}]}]
     end
-' "$WIN_SETTINGS" > "$TMP"
-mv "$TMP" "$WIN_SETTINGS"
+'
 
-echo "Merged Notification hook into Windows settings:"
-echo "  $WIN_SETTINGS  (backup at $BACKUP)"
+merge() {
+  local event="$1" matcher="$2" tmp
+  tmp="$(mktemp)"
+  jq --arg event "$event" --arg matcher "$matcher" --arg cmd "$HOOK_CMD" "$JQ_FILTER" "$WIN_SETTINGS" > "$tmp"
+  mv "$tmp" "$WIN_SETTINGS"
+}
+
+merge "Notification" ""
+merge "PreToolUse"   "ExitPlanMode"
+merge "PostToolUse"  "ExitPlanMode"
+
+echo "Registered for: Notification, PreToolUse[ExitPlanMode], PostToolUse[ExitPlanMode]"
+echo "Settings: $WIN_SETTINGS  (backup at $BACKUP)"
 echo
-echo "Done. Restart any open Windows-side 'claude' sessions for the hook to take effect."
+echo "Done. Restart any open Windows-side 'claude' sessions for the hooks to take effect."

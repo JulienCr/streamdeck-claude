@@ -1,10 +1,13 @@
-# Claude Code Notification hook (Windows side).
-# Mirrors hooks/notification.sh: when Claude needs the user's attention
-# (permission prompt, idle prompt, ...), drop a small file the
-# streamdeck-claude plugin polls to flip the slot to the "awaiting" state.
+# Claude Code hook bridge for the streamdeck-claude plugin (Windows side).
+# Mirrors hooks/notification.sh — same script handles three events, routed by
+# `hook_event_name` (and, for tool events, `tool_name`):
 #
-# Wired up via: %USERPROFILE%\.claude\settings.json -> hooks.Notification
-# Install with: pnpm install:hook:windows  (scripts/install-hook-windows.sh)
+#   Notification                       -> drop  <sessionId>.notify.json
+#   PreToolUse  matcher=ExitPlanMode   -> drop  <sessionId>.plan.json
+#   PostToolUse matcher=ExitPlanMode   -> rm    <sessionId>.plan.json
+#
+# Wired up via %USERPROFILE%\.claude\settings.json. Install with:
+#   pnpm install:hook:windows  (scripts/install-hook-windows.sh)
 
 $ErrorActionPreference = 'SilentlyContinue'
 
@@ -15,10 +18,14 @@ $ErrorActionPreference = 'SilentlyContinue'
 $payload = [Console]::In.ReadToEnd()
 
 $sessionId = $null
+$event     = $null
+$toolName  = $null
 if ($payload) {
     try {
-        $obj = $payload | ConvertFrom-Json
+        $obj       = $payload | ConvertFrom-Json
         $sessionId = $obj.session_id
+        $event     = $obj.hook_event_name
+        $toolName  = $obj.tool_name
     } catch {
         $sessionId = $null
     }
@@ -29,11 +36,28 @@ if ($sessionId) {
     if (-not (Test-Path $sessionsDir)) {
         New-Item -ItemType Directory -Force -Path $sessionsDir | Out-Null
     }
-    $notifyFile = Join-Path $sessionsDir ("{0}.notify.json" -f $sessionId)
     $tsMs = [int64]([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())
-    $json = '{"sessionId":"' + $sessionId + '","reason":"awaiting","mtime":' + $tsMs + '}'
-    [System.IO.File]::WriteAllText($notifyFile, $json)
+
+    switch ($event) {
+        'Notification' {
+            $notifyFile = Join-Path $sessionsDir ("{0}.notify.json" -f $sessionId)
+            $json = '{"sessionId":"' + $sessionId + '","reason":"awaiting","mtime":' + $tsMs + '}'
+            [System.IO.File]::WriteAllText($notifyFile, $json)
+        }
+        'PreToolUse' {
+            if ($toolName -eq 'ExitPlanMode') {
+                $planFile = Join-Path $sessionsDir ("{0}.plan.json" -f $sessionId)
+                $json = '{"sessionId":"' + $sessionId + '","reason":"plan","mtime":' + $tsMs + '}'
+                [System.IO.File]::WriteAllText($planFile, $json)
+            }
+        }
+        'PostToolUse' {
+            if ($toolName -eq 'ExitPlanMode') {
+                $planFile = Join-Path $sessionsDir ("{0}.plan.json" -f $sessionId)
+                if (Test-Path $planFile) { Remove-Item -Force $planFile }
+            }
+        }
+    }
 }
 
-# Pass-through response — let other Notification hooks do their thing.
 Write-Output '{}'
