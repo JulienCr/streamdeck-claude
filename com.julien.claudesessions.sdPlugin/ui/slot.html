@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Claude Session Slot</title>
+  <style>
+    :root { color-scheme: dark; }
+    html, body {
+      margin: 0;
+      padding: 14px 16px;
+      font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+      font-size: 13px;
+      line-height: 1.4;
+      color: #d4d4d4;
+      background: #2d2d2d;
+    }
+    h2 {
+      margin: 0 0 12px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #e5e7eb;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 6px 0;
+      border-bottom: 1px solid #3a3a3a;
+    }
+    .row:last-child { border-bottom: none; }
+    .label { color: #9ca3af; }
+    .value {
+      font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+      color: #f3f4f6;
+      text-align: right;
+      word-break: break-all;
+    }
+    .pill {
+      display: inline-block;
+      padding: 1px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .pill.fresh   { background: #14532d; color: #bbf7d0; }
+    .pill.stale   { background: #4a1d1d; color: #fecaca; }
+    .pill.loading { background: #1e3a8a; color: #bfdbfe; }
+    .hint {
+      margin-top: 12px;
+      padding: 8px 10px;
+      background: #1f2937;
+      border-radius: 4px;
+      font-size: 12px;
+      color: #9ca3af;
+    }
+    code { color: #fde68a; }
+  </style>
+</head>
+<body>
+  <h2>Claude Sessions Plugin</h2>
+  <div class="row">
+    <span class="label">Last build</span>
+    <span class="value" id="built-at">…</span>
+  </div>
+  <div class="row">
+    <span class="label">Age</span>
+    <span class="value"><span id="age" class="pill loading">checking…</span></span>
+  </div>
+  <div class="row">
+    <span class="label">Plugin uptime</span>
+    <span class="value" id="uptime">…</span>
+  </div>
+  <div class="hint">
+    To refresh after a rebuild, run <code>pnpm sd:reload</code> in the project.
+    The plugin re-spawns within ~1 s; this panel reloads on its own.
+  </div>
+
+  <script>
+    const startedAt = Date.now();
+    let buildUnix = 0;
+
+    function fmtAge(ms) {
+      if (ms < 60_000) return Math.round(ms / 1000) + "s ago";
+      if (ms < 3_600_000) return Math.round(ms / 60_000) + "m ago";
+      return Math.round(ms / 3_600_000) + "h ago";
+    }
+
+    async function loadBuildInfo() {
+      try {
+        // Cache-bust so a rebuild is reflected immediately.
+        const res = await fetch("../bin/build-info.json?t=" + Date.now(), { cache: "no-store" });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const info = await res.json();
+        buildUnix = info.unix;
+        document.getElementById("built-at").textContent = info.builtAtLocal;
+        renderAge();
+      } catch (err) {
+        document.getElementById("built-at").textContent = "(unknown)";
+        const pill = document.getElementById("age");
+        pill.textContent = "error: " + err.message;
+        pill.className = "pill stale";
+      }
+    }
+
+    function renderAge() {
+      if (!buildUnix) return;
+      const ageMs = Date.now() - buildUnix;
+      const pill = document.getElementById("age");
+      pill.textContent = fmtAge(ageMs);
+      pill.className = "pill " + (ageMs < 5 * 60_000 ? "fresh" : "stale");
+      document.getElementById("uptime").textContent = fmtAge(Date.now() - startedAt);
+    }
+
+    // Connect to Stream Deck (we don't actually need to do anything with the
+    // websocket — but the SDK passes us connection params we shouldn't ignore).
+    // eslint-disable-next-line no-unused-vars
+    function connectElgatoStreamDeckSocket() { /* no-op, just satisfies SD */ }
+
+    loadBuildInfo();
+    setInterval(loadBuildInfo, 5_000);   // pick up rebuilds while the panel is open
+    setInterval(renderAge, 1_000);
+  </script>
+</body>
+</html>

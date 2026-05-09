@@ -1,0 +1,45 @@
+{
+  "Name": "Claude Sessions",
+  "Version": "0.1.0.0",
+  "Author": "Julien",
+  "Description": "Live status of running Claude Code CLI sessions, one per Stream Deck key.",
+  "Category": "Claude Sessions",
+  "CategoryIcon": "imgs/plugin/category-icon",
+  "Icon": "imgs/plugin/marketplace",
+  "SDKVersion": 2,
+  "Software": {
+    "MinimumVersion": "6.5"
+  },
+  "OS": [
+    {
+      "Platform": "windows",
+      "MinimumVersion": "10"
+    }
+  ],
+  "Nodejs": {
+    "Version": "20",
+    "Debug": "enabled"
+  },
+  "CodePath": "bin/plugin.js",
+  "UUID": "com.julien.claudesessions",
+  "Actions": [
+    {
+      "Name": "Claude Session Slot",
+      "UUID": "com.julien.claudesessions.slot",
+      "Icon": "imgs/actions/slot/icon",
+      "PropertyInspectorPath": "ui/slot.html",
+      "Tooltip": "Live state of a Claude Code session. Press to copy its project path.",
+      "Controllers": [
+        "Keypad"
+      ],
+      "DisableAutomaticStates": true,
+      "States": [
+        {
+          "Image": "imgs/actions/slot/key",
+          "TitleAlignment": "middle",
+          "ShowTitle": false
+        }
+      ]
+    }
+  ]
+}
