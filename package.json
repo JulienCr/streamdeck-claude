@@ -7,7 +7,7 @@
   "scripts": {
     "build": "rollup -c",
     "watch": "rollup -c -w --watch.onEnd=\"bash scripts/reload-plugin.sh\"",
-    "icons:render": "node --experimental-strip-types scripts/render-icons.mjs",
+    "icons:render": "pnpm dlx tsx scripts/render-icons.mjs",
     "icons:static": "python3 scripts/render-static-pngs.py",
     "install:hook": "bash scripts/install-hook.sh",
     "install:hook:windows": "bash scripts/install-hook.sh --target=windows",

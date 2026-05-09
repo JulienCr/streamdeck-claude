@@ -1,5 +1,5 @@
 import streamDeck, { LogLevel } from "@elgato/streamdeck";
-import { ANIMATION_FRAMES, iconNeedsAnimation, isAnimated, renderIcon, type SessionState } from "./icons.js";
+import { ANIMATION_FRAMES, iconNeedsAnimation, isAnimated, renderIcon, type SessionState } from "./icons/index.js";
 import { SlotAction } from "./slot-action.js";
 import {
   deriveState,

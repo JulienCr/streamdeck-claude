@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 // Re-renders icons/<state>.svg from the same templates the runtime uses.
-// Run with:  node --experimental-strip-types scripts/render-icons.mjs
+// Run with:  pnpm icons:render   (which invokes `pnpm dlx tsx` under the hood).
 //
-// Node 22+ runs the TypeScript file in-place. If your Node is older, transpile
-// once with `pnpm build` and import bin/plugin.js — but the SVGs in icons/
-// already in this repo are the canonical preview, so most users don't need
-// to run this at all. Tweak src/icons.ts and re-run only if the design changes.
+// Why tsx? The icons modules use `.js` specifiers for ESM imports (project
+// convention) but the underlying files are `.ts`. Node's bare
+// --experimental-strip-types loader doesn't rewrite those specifiers, so we
+// route through tsx instead. The SVGs already in icons/ are the canonical
+// preview, so most users don't need to run this at all — tweak src/icons/*
+// and re-run only if the design changes.
 
 import { writeFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -16,7 +18,7 @@ const root = resolve(here, "..");
 const outDir = resolve(root, "icons");
 mkdirSync(outDir, { recursive: true });
 
-const { renderIcon } = await import(resolve(root, "src/icons.ts"));
+const { renderIcon } = await import(resolve(root, "src/icons/index.ts"));
 
 // Pinned `now` so the rendered SVG is reproducible (marquee offset stays put).
 const FROZEN_NOW = 0;
