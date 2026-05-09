@@ -40,6 +40,20 @@ const ERROR_TTL_MS = 60_000;
 /** "Subagent active" file is explicitly cleared by SubagentStop; TTL is a
  *  safety net for cases where Stop never fires (subagent crash, killed CC). */
 const SUBAGENT_TTL_MS = 30 * 60_000;
+/** If the session JSON was updated more than this many ms after a notify/plan/
+ *  error sidecar was dropped, the sidecar is stale and we ignore it — Claude
+ *  has clearly moved on (status flipped, tool ran, etc.) since the wait point.
+ *  Catches the case where the matching `Stop`/`PostToolUse` hook didn't run
+ *  (timed out, blocked behind another slow hook, CC bug) so the file lingered
+ *  for up to its TTL. Grace absorbs clock skew between hook fire and the
+ *  status-flip write to the session JSON. */
+const SIDECAR_GRACE_MS = 1500;
+
+function sidecarFresh(mtimeMs: number, ttlMs: number, sessionUpdatedAt: number | undefined, now: number): boolean {
+  if (now - mtimeMs >= ttlMs) return false;
+  if (sessionUpdatedAt !== undefined && mtimeMs < sessionUpdatedAt - SIDECAR_GRACE_MS) return false;
+  return true;
+}
 
 interface RawSession {
   pid: number;
@@ -104,11 +118,12 @@ async function readOneSource(src: SessionSourceDir): Promise<SessionInfo[]> {
           return;
         }
         const status = raw.status === "busy" ? "busy" : "idle";
+        const now = Date.now();
 
         let awaiting = false;
         try {
           const notifyStat = await stat(join(src.path, `${raw.sessionId}.notify.json`));
-          awaiting = Date.now() - notifyStat.mtimeMs < NOTIFY_TTL_MS;
+          awaiting = sidecarFresh(notifyStat.mtimeMs, NOTIFY_TTL_MS, raw.updatedAt, now);
         } catch {
           // no notify file
         }
@@ -117,7 +132,7 @@ async function readOneSource(src: SessionSourceDir): Promise<SessionInfo[]> {
         try {
           const planStat = await stat(join(src.path, `${raw.sessionId}.plan.json`));
           // Plan approval can sit untouched for a long time — be more permissive than notify.
-          awaitingPlan = Date.now() - planStat.mtimeMs < PLAN_TTL_MS;
+          awaitingPlan = sidecarFresh(planStat.mtimeMs, PLAN_TTL_MS, raw.updatedAt, now);
         } catch {
           // no plan file
         }
@@ -125,15 +140,19 @@ async function readOneSource(src: SessionSourceDir): Promise<SessionInfo[]> {
         let errored = false;
         try {
           const errorStat = await stat(join(src.path, `${raw.sessionId}.error.json`));
-          errored = Date.now() - errorStat.mtimeMs < ERROR_TTL_MS;
+          errored = sidecarFresh(errorStat.mtimeMs, ERROR_TTL_MS, raw.updatedAt, now);
         } catch {
           // no error file
         }
 
+        // Subagent state intentionally skips the updatedAt staleness check: the
+        // session is busy *because* of the subagent, so updatedAt advances past
+        // subagent.mtime during normal operation — that would falsely invalidate
+        // the active state mid-run. SubagentStop + the safety-net TTL handle it.
         let subagentActive = false;
         try {
           const subagentStat = await stat(join(src.path, `${raw.sessionId}.subagent.json`));
-          subagentActive = Date.now() - subagentStat.mtimeMs < SUBAGENT_TTL_MS;
+          subagentActive = now - subagentStat.mtimeMs < SUBAGENT_TTL_MS;
         } catch {
           // no subagent file
         }

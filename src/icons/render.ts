@@ -6,6 +6,7 @@ import {
   BOTTOM_FONT,
   BOTTOM_LINE1_Y,
   BOTTOM_LINE2_Y,
+  MOTIF_DY,
   TOP_BASELINE,
   TOP_FONT,
   VIEWPORT_W,
@@ -49,10 +50,13 @@ export function renderIcon({ state, slot, label, frame = 0, now }: IconOptions):
     idSuffix: `t${slot}`,
   });
 
+  // When there's a single bottom line, drop it to BOTTOM_LINE2_Y so it sits
+  // visually anchored to the lower edge instead of floating in the middle gap.
+  const singleBottom = line1 && !line2;
   const line1Svg = line1
     ? textLine({
         text: line1,
-        baseline: BOTTOM_LINE1_Y,
+        baseline: singleBottom ? BOTTOM_LINE2_Y : BOTTOM_LINE1_Y,
         fontSize: BOTTOM_FONT,
         weight: "600",
         color: labelColor,
@@ -93,7 +97,7 @@ ${pulseOverlay}
 <rect x="${BORDER_INSET}" y="${BORDER_INSET}" width="${BORDER_SIZE}" height="${BORDER_SIZE}" rx="${BORDER_RADIUS}" fill="none" stroke="${accent}" stroke-width="${BORDER_STROKE}" stroke-linejoin="round" opacity="${isEmpty ? "0.45" : "0.95"}"/>
 ${slotBadge}
 ${topLine}
-<g>${STATES[state].motif(frame, accent)}</g>
+<g transform="translate(0,${MOTIF_DY})">${STATES[state].motif(frame, accent)}</g>
 ${line1Svg}
 ${line2Svg}
 </svg>`;

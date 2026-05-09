@@ -1,6 +1,6 @@
 # streamdeck-claude
 
-A Stream Deck plugin that mirrors the live state of your running Claude Code CLI sessions on up to 5 keys. Sessions auto-fill the slots in start-time order (oldest at slot 1). Each key shows the project name and its current state:
+A Stream Deck plugin that mirrors the live state of your running Claude Code CLI sessions across however many keys you assign it. Sessions auto-fill the slots in start-time order (oldest at slot 1); excess sessions beyond the slot count are simply not displayed. Each key shows the project name and its current state:
 
 | State | Color | Meaning |
 |---|---|---|
@@ -58,7 +58,7 @@ Both hooks behave identically: they read the hook payload from stdin, extract `s
 
 `pnpm sd:link` shells through `cmd.exe` to run a real Windows `mklink /D`, with the symlink target as `\\wsl.localhost\Ubuntu\home\julien\dev\streamdeck-claude\com.julien.claudesessions.sdPlugin`. We don't use `streamdeck link` directly because it creates a Linux-style symlink (target = `/home/...`) which the Windows-side Stream Deck app can't follow.
 
-After linking, **quit + relaunch the Stream Deck app** (right-click tray icon → Quit). The "Claude Sessions" category appears in the actions list — drag **Claude Session Slot** onto five keys.
+After linking, **quit + relaunch the Stream Deck app** (right-click tray icon → Quit). The "Claude Sessions" category appears in the actions list — drag **Claude Session Slot** onto as many keys as you want to dedicate to live sessions. The plugin orders them by deck position (top-to-bottom, left-to-right) and fills as many as you provide.
 
 ## Available pnpm scripts
 
@@ -115,7 +115,6 @@ Plugin logs land at `%APPDATA%\Elgato\StreamDeck\Plugins\com.julien.claudesessio
 
 - **Different WSL distro**: set the `WSL_DISTRO_NAME` env var. Auto-detected by `link-plugin.sh` and `install-hook.sh`; baked into the bundle at `pnpm build` time so the SD-launched plugin (which doesn't see WSL env vars) still resolves the right UNC path.
 - **Different Windows username / home path**: `USERPROFILE` is set by Windows and used directly. For a different WSL home, just `pnpm build` from that home — `HOME` at build time is captured by rollup and baked into the bundle. All path resolution lives in `src/env.ts`.
-- **More than 5 keys**: just drop more `Claude Session Slot` actions; the plugin orders them by deck position (top-to-bottom, left-to-right) and renders as many as you give it. Sessions in excess of available keys are not displayed.
 - **Different icon designs**: edit `src/icons/`, then `pnpm icons:render` to refresh the reference SVGs in `icons/`.
 
 ## Verification checklist
@@ -124,7 +123,7 @@ Plugin logs land at `%APPDATA%\Elgato\StreamDeck\Plugins\com.julien.claudesessio
 2. `pnpm sd:validate` reports "Validation successful".
 3. `pnpm install:hook` — `jq '.hooks.Notification' ~/.claude/settings.json` shows the new hook.
 4. `pnpm sd:link` — output contains "✓ symlink resolves through Windows".
-5. Quit + relaunch the Stream Deck app. Drag **Claude Session Slot** onto 5 keys.
+5. Quit + relaunch the Stream Deck app. Drag **Claude Session Slot** onto whatever keys you want to dedicate to live sessions.
 6. In a terminal, run `claude` here. Slot 1 fills with `streamdeck-claude` in green while it works, blue while idle.
 7. Trigger a permission prompt → slot flips to orange within ~1 s.
 8. Open `claude` in another `cwd` → slot 2 lights up.
