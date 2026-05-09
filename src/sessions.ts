@@ -1,8 +1,9 @@
-import { readdir, readFile, stat } from "node:fs/promises";
+import { readdir, readFile, unlink } from "node:fs/promises";
 import { platform } from "node:os";
 import { join } from "node:path";
 import type { SessionState } from "./icons/index.js";
 import { WIN_SESSIONS_DIR, WSL_SESSIONS_DIR, WSL_SESSIONS_DIR_FROM_WIN } from "./env.js";
+import { parseEventLog, reduceEvents } from "./session-events.js";
 
 /** WSL or Windows-native Claude Code session — they live in different folders
  *  with different process namespaces and need different liveness checks. */
@@ -28,33 +29,6 @@ export const SESSION_SOURCES: SessionSourceDir[] = platform() === "win32"
 /** Surface readdir errors to the polling loop so it can log them once. */
 export let lastReadError: string | undefined;
 
-/** "Awaiting permission" notify file is considered fresh for this long. */
-const NOTIFY_TTL_MS = 60_000;
-/** "Awaiting plan approval" file gets more leeway — users sometimes leave plans
- *  un-approved while they read other things, and we explicitly clear the file
- *  on PostToolUse so TTL is just a safety net. */
-const PLAN_TTL_MS = 30 * 60_000;
-/** "Errored turn" stays visible just long enough to notice, then fades.
- *  Mirrors NOTIFY_TTL_MS — same surface-then-clear cadence. */
-const ERROR_TTL_MS = 60_000;
-/** "Subagent active" file is explicitly cleared by SubagentStop; TTL is a
- *  safety net for cases where Stop never fires (subagent crash, killed CC). */
-const SUBAGENT_TTL_MS = 30 * 60_000;
-/** If the session JSON was updated more than this many ms after a notify/plan/
- *  error sidecar was dropped, the sidecar is stale and we ignore it — Claude
- *  has clearly moved on (status flipped, tool ran, etc.) since the wait point.
- *  Catches the case where the matching `Stop`/`PostToolUse` hook didn't run
- *  (timed out, blocked behind another slow hook, CC bug) so the file lingered
- *  for up to its TTL. Grace absorbs clock skew between hook fire and the
- *  status-flip write to the session JSON. */
-const SIDECAR_GRACE_MS = 1500;
-
-function sidecarFresh(mtimeMs: number, ttlMs: number, sessionUpdatedAt: number | undefined, now: number): boolean {
-  if (now - mtimeMs >= ttlMs) return false;
-  if (sessionUpdatedAt !== undefined && mtimeMs < sessionUpdatedAt - SIDECAR_GRACE_MS) return false;
-  return true;
-}
-
 interface RawSession {
   pid: number;
   sessionId: string;
@@ -73,13 +47,13 @@ export interface SessionInfo {
   label: string;
   startedAt: number;
   rawStatus: "busy" | "idle";
-  /** Set if a fresh "awaiting permission" notify file exists. */
+  /** Awaiting a permission/input notification from the user. */
   awaiting: boolean;
-  /** Set if a fresh "awaiting plan approval" notify file exists. */
+  /** Awaiting plan approval (ExitPlanMode tool used). */
   awaitingPlan: boolean;
-  /** Set if a fresh "errored turn" file exists (StopFailure hook). */
+  /** Last turn ended with StopFailure and no UserPromptSubmit since. */
   errored: boolean;
-  /** Set if a fresh "subagent active" file exists (SubagentStart hook). */
+  /** At least one subagent currently running. */
   subagentActive: boolean;
   origin: SessionOrigin;
 }
@@ -118,43 +92,13 @@ async function readOneSource(src: SessionSourceDir): Promise<SessionInfo[]> {
           return;
         }
         const status = raw.status === "busy" ? "busy" : "idle";
-        const now = Date.now();
 
-        let awaiting = false;
+        let derived = { awaiting: false, awaitingPlan: false, errored: false, subagentDepth: 0 };
         try {
-          const notifyStat = await stat(join(src.path, `${raw.sessionId}.notify.json`));
-          awaiting = sidecarFresh(notifyStat.mtimeMs, NOTIFY_TTL_MS, raw.updatedAt, now);
+          const text = await readFile(join(src.path, `${raw.sessionId}.events.ndjson`), "utf8");
+          derived = reduceEvents(parseEventLog(text));
         } catch {
-          // no notify file
-        }
-
-        let awaitingPlan = false;
-        try {
-          const planStat = await stat(join(src.path, `${raw.sessionId}.plan.json`));
-          // Plan approval can sit untouched for a long time — be more permissive than notify.
-          awaitingPlan = sidecarFresh(planStat.mtimeMs, PLAN_TTL_MS, raw.updatedAt, now);
-        } catch {
-          // no plan file
-        }
-
-        let errored = false;
-        try {
-          const errorStat = await stat(join(src.path, `${raw.sessionId}.error.json`));
-          errored = sidecarFresh(errorStat.mtimeMs, ERROR_TTL_MS, raw.updatedAt, now);
-        } catch {
-          // no error file
-        }
-
-        // Subagent state intentionally skips the updatedAt staleness check: the
-        // session is busy *because* of the subagent, so updatedAt advances past
-        // subagent.mtime during normal operation — that would falsely invalidate
-        // the active state mid-run. SubagentStop + the safety-net TTL handle it.
-        let subagentActive = false;
-        try {
-          const subagentStat = await stat(join(src.path, `${raw.sessionId}.subagent.json`));
-          subagentActive = now - subagentStat.mtimeMs < SUBAGENT_TTL_MS;
-        } catch {
-          // no subagent file
+          // no event log yet — defaults are fine
         }
 
         out.push({
@@ -164,10 +108,10 @@ async function readOneSource(src: SessionSourceDir): Promise<SessionInfo[]> {
           label: raw.name?.trim() || basename(raw.cwd),
           startedAt: typeof raw.startedAt === "number" ? raw.startedAt : 0,
           rawStatus: status,
-          awaiting,
-          awaitingPlan,
-          errored,
-          subagentActive,
+          awaiting: derived.awaiting,
+          awaitingPlan: derived.awaitingPlan,
+          errored: derived.errored,
+          subagentActive: derived.subagentDepth > 0,
           origin: src.origin,
         });
       }),
@@ -183,9 +127,40 @@ export async function readAllSessions(): Promise<SessionInfo[]> {
   return results.flat();
 }
 
-/** State for the icon, derived from session status + sidecar presence + liveness.
+/** Unlinks every `<sid>.events.ndjson` across all configured source dirs.
+ *  Safe to call any time: hooks just recreate the files on the next event.
+ *  Used by the Setup action to force every slot back to a clean idle state. */
+export async function wipeAllEventLogs(): Promise<{ wiped: number; errors: string[] }> {
+  let wiped = 0;
+  const errors: string[] = [];
+  await Promise.all(
+    SESSION_SOURCES.map(async (src) => {
+      let entries: string[];
+      try {
+        entries = await readdir(src.path);
+      } catch (err) {
+        errors.push(`${src.origin}: ${err instanceof Error ? err.message : String(err)}`);
+        return;
+      }
+      const targets = entries.filter((f) => f.endsWith(".events.ndjson"));
+      await Promise.all(
+        targets.map(async (f) => {
+          try {
+            await unlink(join(src.path, f));
+            wiped++;
+          } catch (err) {
+            errors.push(`${src.origin}/${f}: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        }),
+      );
+    }),
+  );
+  return { wiped, errors };
+}
+
+/** State for the icon, derived from session status + event-log projection + liveness.
  *  Priority: dead > error > plan-approval > permission-prompt > subagent > working > idle.
- *  An errored session may already be back to idle by the time we see the file,
+ *  An errored session may already be back to idle by the time we see it,
  *  so error wins regardless of busy/idle. */
 export function deriveState(s: SessionInfo, alive: boolean): SessionState {
   if (!alive) return "finished";

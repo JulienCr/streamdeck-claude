@@ -1,18 +1,13 @@
 # Claude Code hook bridge for the streamdeck-claude plugin (Windows side).
-# Mirrors hooks/notification.sh — same script handles every event listed in
-# the sibling hooks/events.json file. Every rule whose event (and optional
-# tool_name) matches the incoming hook fires, in declaration order, so one
-# event can target multiple sidecar files (e.g. SessionEnd cleans up
-# notify/plan/error/subagent in one pass). Each rule routes to either:
-#   - drop  <sessionId>.<file>.json (awaiting flag, with reason+mtime)
-#   - rm    <sessionId>.<file>.json (clear flag)
+# Mirrors hooks/notification.sh — appends one JSON line per hook fire to
+# <sid>.events.ndjson. The plugin replays the log through a state machine
+# in src/session-events.ts to derive the icon state.
 #
 # Wired up via %USERPROFILE%\.claude\settings.json. Install with:
 #   pnpm install:hook:windows  (scripts/install-hook.sh --target=windows)
 # The install step does NOT copy this file — it registers a hook command
 # that invokes this .ps1 directly from the repo over the
-# `\\wsl.localhost\<distro>\…` UNC path. events.json is read from its sibling
-# location, so a single edit there updates both WSL and Windows hooks.
+# `\\wsl.localhost\<distro>\…` UNC path.
 
 $ErrorActionPreference = 'SilentlyContinue'
 
@@ -23,57 +18,50 @@ $ErrorActionPreference = 'SilentlyContinue'
 $payload = [Console]::In.ReadToEnd()
 
 $sessionId = $null
-$event     = $null
+$eventName = $null
 $toolName  = $null
 if ($payload) {
     try {
         $obj       = $payload | ConvertFrom-Json
         $sessionId = $obj.session_id
-        $event     = $obj.hook_event_name
+        $eventName = $obj.hook_event_name
         $toolName  = $obj.tool_name
     } catch {
         $sessionId = $null
     }
 }
 
-if (-not $sessionId) { Write-Output '{}'; exit }
-
-$scriptDir  = Split-Path -Parent $MyInvocation.MyCommand.Path
-$eventsFile = Join-Path $scriptDir 'events.json'
-if (-not (Test-Path $eventsFile)) { Write-Output '{}'; exit }
-
-try {
-    $rules = (Get-Content -Raw $eventsFile | ConvertFrom-Json).events
-} catch {
-    Write-Output '{}'; exit
-}
-
-# Collect every rule whose event matches and (if specified) tool_name matches.
-# We run *all* matching rules so one event can target multiple sidecars.
-$ruleMatches = @($rules | Where-Object {
-    $_.event -eq $event -and (-not $_.tool_name -or $_.tool_name -eq $toolName)
-})
-
-if ($ruleMatches.Count -eq 0) { Write-Output '{}'; exit }
+if (-not $sessionId -or -not $eventName) { Write-Output '{}'; exit }
 
 $sessionsDir = Join-Path $env:USERPROFILE '.claude\sessions'
 if (-not (Test-Path $sessionsDir)) {
     New-Item -ItemType Directory -Force -Path $sessionsDir | Out-Null
 }
+$target = Join-Path $sessionsDir "$sessionId.events.ndjson"
 
-$tsMs = [int64]([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())
-
-foreach ($rule in $ruleMatches) {
-    $target = Join-Path $sessionsDir ("{0}.{1}.json" -f $sessionId, $rule.file)
-    switch ($rule.action) {
-        'drop' {
-            $json = @{ sessionId = $sessionId; reason = $rule.reason; mtime = $tsMs } | ConvertTo-Json -Compress
-            [System.IO.File]::WriteAllText($target, $json)
-        }
-        'rm' {
-            if (Test-Path $target) { Remove-Item -Force $target }
-        }
-    }
+# SessionEnd: drop the log entirely.
+if ($eventName -eq 'SessionEnd') {
+    Remove-Item -Path $target -Force -ErrorAction SilentlyContinue
+    Write-Output '{}'
+    exit
 }
+
+# SessionStart: truncate before appending the new entry.
+if ($eventName -eq 'SessionStart') {
+    Set-Content -Path $target -Value '' -NoNewline -Encoding utf8
+}
+
+$ts = [int64](([DateTimeOffset]::UtcNow).ToUnixTimeMilliseconds())
+
+# Use ConvertTo-Json so embedded quotes/backslashes in tool names get escaped
+# correctly — string interpolation would corrupt the line.
+$entry = if ($toolName) {
+    [ordered]@{ ts = $ts; event = $eventName; tool = $toolName }
+} else {
+    [ordered]@{ ts = $ts; event = $eventName }
+}
+$line = $entry | ConvertTo-Json -Compress
+
+Add-Content -Path $target -Value $line -Encoding utf8
 
 Write-Output '{}'

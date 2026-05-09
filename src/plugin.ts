@@ -1,26 +1,23 @@
 import streamDeck, { LogLevel } from "@elgato/streamdeck";
 import { ANIMATION_FRAMES } from "./icons/index.js";
 import { SlotAction } from "./slot-action.js";
+import { SetupAction } from "./setup-action.js";
 import { watchForReload } from "./reload-watcher.js";
 import { createStateTracker } from "./state-tracker.js";
 import { renderAll } from "./render-loop.js";
+import { wipeAllEventLogs } from "./sessions.js";
 
 streamDeck.logger.setLevel(LogLevel.DEBUG);
-
-const slotAction = new SlotAction();
-streamDeck.actions.registerAction(slotAction);
-await streamDeck.connect();
 
 const POLL_MS = 1000;
 const ANIMATION_MS = 120;
 
+const slotAction = new SlotAction();
 const tracker = createStateTracker();
 let frame = 0;
-
-watchForReload({ pollMs: POLL_MS });
-
 let slowTickRunning = false;
-setInterval(async () => {
+
+async function runSlowTick(): Promise<void> {
   if (slowTickRunning) return;
   slowTickRunning = true;
   try {
@@ -31,7 +28,28 @@ setInterval(async () => {
   } finally {
     slowTickRunning = false;
   }
-}, POLL_MS);
+}
+
+async function refreshNow() {
+  const result = await wipeAllEventLogs();
+  if (result.errors.length) {
+    streamDeck.logger.warn(`wipeAllEventLogs errors: ${result.errors.join("; ")}`);
+  }
+  // Force a re-poll + re-render so the user sees the wipe take effect immediately.
+  // If a tick is already in flight, the regular interval picks up the change in <1s.
+  await runSlowTick();
+  return result;
+}
+
+const setupAction = new SetupAction(refreshNow);
+
+streamDeck.actions.registerAction(slotAction);
+streamDeck.actions.registerAction(setupAction);
+await streamDeck.connect();
+
+watchForReload({ pollMs: POLL_MS });
+
+setInterval(runSlowTick, POLL_MS);
 
 let animateRunning = false;
 setInterval(async () => {

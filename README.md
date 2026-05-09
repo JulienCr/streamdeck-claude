@@ -21,20 +21,21 @@ Reference SVGs for every state live in [`icons/`](./icons).
 
 - Claude Code writes one JSON file per running CLI session under `~/.claude/sessions/<pid>.json`.
 - The plugin polls that directory once per second, batches a `kill -0 <pid>` check (over `wsl.exe -d Ubuntu` on Windows hosts) to filter out stale files, sorts the live sessions by `startedAt`, and renders an SVG per slot via `setImage`.
-- Hook-driven sidecars under `~/.claude/sessions/<sessionId>.<flag>.json` carry the rest of the state. The dispatch table is `hooks/events.json` (read by both `notification.sh` and `notification.ps1`), every matching rule fires:
+- Each registered Claude Code hook event appends one JSON line to `~/.claude/sessions/<sessionId>.events.ndjson`. The plugin reads that log every tick and replays it through a small state machine (`src/session-events.ts`) to derive the icon state.
 
-| Hook event | Sidecar | TTL | Drives |
-|---|---|---|---|
-| `Notification` | `notify` (drop) | 60 s | `awaiting` |
-| `Stop` | `notify` (rm) | – | clears `awaiting` early |
-| `PreToolUse[ExitPlanMode]` | `plan` (drop) | 30 min | `awaiting_plan` |
-| `PostToolUse[ExitPlanMode]` | `plan` (rm) | – | clears `awaiting_plan` |
-| `StopFailure` | `error` (drop) | 60 s | `error` |
-| `SubagentStart` | `subagent` (drop) | 30 min | `subagent` |
-| `SubagentStop` | `subagent` (rm) | – | clears `subagent` |
-| `SessionEnd` | sweep all sidecars | – | safety-net cleanup on Ctrl-C / crash |
+| Hook event | Effect on state |
+|---|---|
+| `SessionStart` | truncates the log + resets state |
+| `Notification` | sets `awaiting` |
+| `Stop` | clears `awaiting` / `awaitingPlan` |
+| `PreToolUse[ExitPlanMode]` | sets `awaitingPlan` |
+| `PostToolUse[ExitPlanMode]` | clears `awaitingPlan` |
+| `StopFailure` | sets `errored` |
+| `UserPromptSubmit` | clears `awaiting` / `awaitingPlan` / `errored` |
+| `SubagentStart` / `SubagentStop` | bumps `subagentDepth` ±1 |
+| `SessionEnd` | unlinks the log |
 
-  TTLs are safety nets — the explicit `rm` rules clear flags as soon as the matching event fires.
+  Pure event-driven: the log is the source of truth. No mtime heuristics, no per-state files, no race conditions between drop/rm pairs. To add a new state, register the event in `scripts/install-hook.sh` and add a case in `src/session-events.ts`.
 
 ## Setup (one-time)
 
@@ -54,7 +55,7 @@ The two `install:hook` scripts are idempotent — re-run any time. They install:
 - **WSL**: a Bash hook (`hooks/notification.sh`) referenced by an absolute WSL path.
 - **Windows**: a PowerShell hook command pointing at `hooks/notification.ps1` over the `\\wsl.localhost\<distro>\…` UNC path. **No copy** — both bash and PowerShell sides read the same `hooks/events.json` from the repo, so editing it once propagates to both.
 
-Both hooks behave identically: they read the hook payload from stdin, extract `session_id` + `hook_event_name`, look up the matching rules in `hooks/events.json`, and drop or remove the corresponding `<sessionId>.<flag>.json` next to that side's session JSON files. The plugin reads both directories and renders the appropriate state based on which sidecars are present (and still within their TTL).
+Both hooks behave identically: they read the hook payload from stdin, extract `session_id` + `hook_event_name` (+ optional `tool_name`), and append a single JSON line to `<sessionId>.events.ndjson` next to that side's session JSON files. The plugin reads both directories and replays each log through `src/session-events.ts` to derive state.
 
 `pnpm sd:link` shells through `cmd.exe` to run a real Windows `mklink /D`, with the symlink target as `\\wsl.localhost\Ubuntu\home\julien\dev\streamdeck-claude\com.julien.claudesessions.sdPlugin`. We don't use `streamdeck link` directly because it creates a Linux-style symlink (target = `/home/...`) which the Windows-side Stream Deck app can't follow.
 

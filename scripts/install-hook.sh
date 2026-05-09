@@ -1,17 +1,14 @@
 #!/usr/bin/env bash
-# Idempotently installs the streamdeck-claude Notification + plan-approval
-# hooks into Claude Code's user-global settings.json. Runs from WSL; can
-# target either the WSL-side Claude install or the Windows-native one.
+# Idempotently installs the streamdeck-claude hook into Claude Code's
+# user-global settings.json. Runs from WSL; can target either the WSL-side
+# Claude install or the Windows-native one.
 #
-# Same script command is registered for every event the dispatcher reacts to:
-#   Notification                            (no matcher)  -> "awaiting permission"
-#   PreToolUse   matcher=ExitPlanMode                     -> "awaiting plan approval"
-#   PostToolUse  matcher=ExitPlanMode                     -> clear plan-approval flag
-#   Stop                                    (no matcher)  -> clear awaiting-permission flag
-#   StopFailure                             (no matcher)  -> "errored turn"
-#   SubagentStart                           (no matcher)  -> "subagent active"
-#   SubagentStop                            (no matcher)  -> clear subagent flag
-#   SessionEnd                              (no matcher)  -> sweep all sidecars
+# The hook (notification.sh / notification.ps1) appends one JSON line per
+# fire to <sid>.events.ndjson. The plugin replays the log through the state
+# machine in src/session-events.ts to derive the icon state. We register the
+# hook for every CC event whose semantics that machine knows how to handle —
+# adding a new state means registering its event here AND adding a case in
+# session-events.ts.
 #
 # Usage:
 #   bash scripts/install-hook.sh                 # default --target=wsl
@@ -20,10 +17,8 @@
 #
 # For --target=windows: registers a hook command that invokes the repo's
 # hooks/notification.ps1 directly over `\\wsl.localhost\<distro>\…` UNC.
-# Nothing is copied — the .ps1 reads its sibling events.json from the same
-# UNC dir, so a single `events.json` edit applies to both WSL and Windows.
-# Override the Windows username with WIN_USER=<name> (default: julie) and
-# the WSL distro with WSL_DISTRO_NAME (default: Ubuntu).
+# Nothing is copied. Override the Windows username with WIN_USER=<name>
+# (default: julie) and the WSL distro with WSL_DISTRO_NAME (default: Ubuntu).
 #
 # Safe to re-run.
 
@@ -56,7 +51,6 @@ case "$TARGET" in
     ;;
   windows)
     SOURCE_PS1="${ROOT}/hooks/notification.ps1"
-    SOURCE_EVENTS="${ROOT}/hooks/events.json"
     WIN_USER="${WIN_USER:-julie}"
     WIN_HOME="/mnt/c/Users/${WIN_USER}"
     WSL_DISTRO="${WSL_DISTRO_NAME:-Ubuntu}"
@@ -67,10 +61,6 @@ case "$TARGET" in
     fi
     if [ ! -f "$SOURCE_PS1" ]; then
       echo "error: $SOURCE_PS1 missing — run from a checked-out repo" >&2
-      exit 1
-    fi
-    if [ ! -f "$SOURCE_EVENTS" ]; then
-      echo "error: $SOURCE_EVENTS missing — run from a checked-out repo" >&2
       exit 1
     fi
 
@@ -147,19 +137,21 @@ merge() {
 
 prune_existing
 
-merge "Notification"  ""
-merge "PreToolUse"    "ExitPlanMode"
-merge "PostToolUse"   "ExitPlanMode"
-merge "Stop"          ""
-merge "StopFailure"   ""
-merge "SubagentStart" ""
-merge "SubagentStop"  ""
-merge "SessionEnd"    ""
+merge "SessionStart"     ""
+merge "Notification"     ""
+merge "PreToolUse"       "ExitPlanMode"
+merge "PostToolUse"      "ExitPlanMode"
+merge "Stop"             ""
+merge "StopFailure"      ""
+merge "UserPromptSubmit" ""
+merge "SubagentStart"    ""
+merge "SubagentStop"     ""
+merge "SessionEnd"       ""
 
 # --- Final summary ---------------------------------------------------------
 echo "Hook command:"
 echo "  $HOOK_CMD"
-echo "Registered for: Notification, PreToolUse[ExitPlanMode], PostToolUse[ExitPlanMode], Stop, StopFailure, SubagentStart, SubagentStop, SessionEnd"
+echo "Registered for: SessionStart, Notification, PreToolUse[ExitPlanMode], PostToolUse[ExitPlanMode], Stop, StopFailure, UserPromptSubmit, SubagentStart, SubagentStop, SessionEnd"
 echo "Settings: $SETTINGS_PATH  (backup at $BACKUP)"
 if [ "$TARGET" = "windows" ]; then
   echo

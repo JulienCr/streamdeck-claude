@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Claude Setup</title>
+  <style>
+    :root { color-scheme: dark; }
+    html, body {
+      margin: 0;
+      padding: 14px 16px;
+      font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+      font-size: 13px;
+      line-height: 1.4;
+      color: #d4d4d4;
+      background: #2d2d2d;
+    }
+    h2 {
+      margin: 0 0 12px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #e5e7eb;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    section {
+      margin-top: 14px;
+    }
+    section:first-of-type { margin-top: 0; }
+    h3 {
+      margin: 0 0 8px;
+      font-size: 11px;
+      font-weight: 600;
+      color: #9ca3af;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    p { margin: 0 0 8px; color: #9ca3af; font-size: 12px; }
+    button {
+      appearance: none;
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #4a4a4a;
+      border-radius: 4px;
+      background: #3a3a3a;
+      color: #f3f4f6;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 120ms;
+    }
+    button:hover  { background: #454545; }
+    button:active { background: #2f2f2f; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .status {
+      margin-top: 8px;
+      min-height: 1.4em;
+      font-size: 12px;
+    }
+    .status.ok    { color: #bbf7d0; }
+    .status.warn  { color: #fed7aa; }
+    .status.error { color: #fecaca; }
+    .placeholder {
+      padding: 12px;
+      border: 1px dashed #3a3a3a;
+      border-radius: 4px;
+      color: #6b7280;
+      font-size: 11px;
+      font-style: italic;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <h2>Claude Sessions Setup</h2>
+
+  <section>
+    <h3>Maintenance</h3>
+    <p>Wipe every <code style="color:#fde68a">&lt;sid&gt;.events.ndjson</code> log and re-render every slot. Hooks repopulate the logs on the next CC event.</p>
+    <button id="refresh">Refresh States</button>
+    <div id="status" class="status"></div>
+  </section>
+
+  <section>
+    <h3>More settings</h3>
+    <div class="placeholder">Future controls will land here.</div>
+  </section>
+
+  <script>
+    let ws;
+    let actionInfo;
+    let actionContext;
+    let registerEvent;
+
+    function connectElgatoStreamDeckSocket(inPort, inUUID, inRegisterEvent, _inInfo, inActionInfo) {
+      actionContext = inUUID;
+      registerEvent = inRegisterEvent;
+      try {
+        actionInfo = JSON.parse(inActionInfo);
+      } catch (err) {
+        console.error("setup PI: bad actionInfo", err);
+      }
+      ws = new WebSocket("ws://127.0.0.1:" + inPort);
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ event: registerEvent, uuid: actionContext }));
+      };
+      ws.onmessage = (msg) => {
+        let data;
+        try { data = JSON.parse(msg.data); } catch { return; }
+        if (data.event === "sendToPropertyInspector" && data.payload?.event === "refresh-done") {
+          handleRefreshDone(data.payload);
+        }
+      };
+    }
+
+    function sendToPlugin(payload) {
+      if (!ws || ws.readyState !== 1 || !actionInfo) return;
+      ws.send(JSON.stringify({
+        action: actionInfo.action,
+        event: "sendToPlugin",
+        context: actionContext,
+        payload,
+      }));
+    }
+
+    function setStatus(text, kind) {
+      const el = document.getElementById("status");
+      el.textContent = text;
+      el.className = "status" + (kind ? " " + kind : "");
+    }
+
+    function handleRefreshDone(payload) {
+      const btn = document.getElementById("refresh");
+      btn.disabled = false;
+      if (payload.skipped) {
+        setStatus("Already refreshing — try again in a moment.", "warn");
+        return;
+      }
+      const errs = Array.isArray(payload.errors) ? payload.errors : [];
+      if (errs.length === 0) {
+        setStatus("✓ " + payload.wiped + " log" + (payload.wiped === 1 ? "" : "s") + " wiped, slots re-rendered.", "ok");
+      } else {
+        setStatus("Wiped " + payload.wiped + " logs, " + errs.length + " error" + (errs.length === 1 ? "" : "s") + ". See plugin log.", "error");
+      }
+    }
+
+    document.getElementById("refresh").addEventListener("click", () => {
+      const btn = document.getElementById("refresh");
+      btn.disabled = true;
+      setStatus("Refreshing…");
+      sendToPlugin({ event: "refresh-states" });
+      // Safety: re-enable the button if no reply comes back within 5 s.
+      setTimeout(() => {
+        if (btn.disabled) {
+          btn.disabled = false;
+          setStatus("No reply from plugin (timeout). Is it running?", "warn");
+        }
+      }, 5000);
+    });
+  </script>
+</body>
+</html>

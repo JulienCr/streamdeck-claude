@@ -1,0 +1,83 @@
+/** Session state is a deterministic projection of an append-only NDJSON event
+ *  log written by hooks (one line per Claude Code hook fire). The plugin reads
+ *  `<sid>.events.ndjson` each tick and replays it through `reduceEvents()` —
+ *  no mtime heuristics, no per-state sidecar files, no race conditions between
+ *  drop/rm pairs. Adding a new state = one case in `applyEvent`. */
+
+export interface SessionEvent {
+  ts: number;
+  event: string;
+  tool?: string;
+}
+
+/** What the icon needs, derived from the event log. The session's busy/idle
+ *  flag still comes from the session JSON's `status` field — that's CC's own
+ *  state, not ours to derive. */
+export interface DerivedState {
+  awaiting: boolean;
+  awaitingPlan: boolean;
+  errored: boolean;
+  subagentDepth: number;
+}
+
+const ZERO: DerivedState = { awaiting: false, awaitingPlan: false, errored: false, subagentDepth: 0 };
+
+export function reduceEvents(events: readonly SessionEvent[]): DerivedState {
+  let state = ZERO;
+  for (const ev of events) state = applyEvent(state, ev);
+  return state;
+}
+
+function applyEvent(state: DerivedState, ev: SessionEvent): DerivedState {
+  switch (ev.event) {
+    case "SessionStart":
+    case "SessionEnd":
+      return ZERO;
+
+    case "Notification":
+      return { ...state, awaiting: true };
+
+    case "PreToolUse":
+      return ev.tool === "ExitPlanMode" ? { ...state, awaitingPlan: true } : state;
+
+    case "PostToolUse":
+      return ev.tool === "ExitPlanMode" ? { ...state, awaitingPlan: false } : state;
+
+    case "Stop":
+      return { ...state, awaiting: false, awaitingPlan: false };
+
+    case "StopFailure":
+      return { ...state, awaiting: false, awaitingPlan: false, errored: true };
+
+    case "UserPromptSubmit":
+      return { ...state, awaiting: false, awaitingPlan: false, errored: false };
+
+    case "SubagentStart":
+      return { ...state, subagentDepth: state.subagentDepth + 1 };
+
+    case "SubagentStop":
+      return { ...state, subagentDepth: Math.max(0, state.subagentDepth - 1) };
+
+    default:
+      return state;
+  }
+}
+
+/** Tolerant NDJSON parser: skips blank lines, malformed JSON, and entries
+ *  missing the required `ts`/`event` fields. The last line may be a partial
+ *  write (hook in progress) — silently dropped. */
+export function parseEventLog(text: string): SessionEvent[] {
+  const out: SessionEvent[] = [];
+  for (const line of text.split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      const obj = JSON.parse(line);
+      if (typeof obj.ts === "number" && typeof obj.event === "string") {
+        out.push({ ts: obj.ts, event: obj.event, tool: typeof obj.tool === "string" ? obj.tool : undefined });
+      }
+    } catch {
+      // skip malformed line
+    }
+  }
+  return out;
+}

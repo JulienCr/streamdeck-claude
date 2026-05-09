@@ -64,14 +64,17 @@ Icon code is split per concern across `src/icons/`: `theme.ts` (constants), `mot
 
 ### Hook pipeline (`hooks/` + `scripts/install-hook.sh`)
 
-Three Claude Code events trigger the same hook script — `Notification` (drop `<sid>.notify.json`), `PreToolUse[ExitPlanMode]` (drop `<sid>.plan.json`), `PostToolUse[ExitPlanMode]` (`rm` it). The mapping table is **`hooks/events.json`**, read by both `notification.sh` (WSL-side, Bash) and `notification.ps1` (Windows-side, PowerShell). To add a new "awaiting" state: edit `events.json` once and both sides pick it up.
+Every registered Claude Code event runs the same hook script (`notification.sh` on WSL, `notification.ps1` on Windows). Both do exactly one thing: append a single JSON line — `{"ts":…,"event":…,"tool":…?}` — to `~/.claude/sessions/<sid>.events.ndjson`. There is no mapping table; the bash and PowerShell scripts are tiny mirrors of each other. `SessionStart` truncates the log first (clean reset, bounds long-lived sessions); `SessionEnd` unlinks it.
 
-The Windows hook is **not copied** — `install-hook.sh --target=windows` registers a PowerShell command that runs `hooks/notification.ps1` directly over `\\wsl.localhost\<distro>\…\hooks\notification.ps1`, so a single repo edit propagates to both. The plugin then watches `<sid>.notify.json` (TTL 60s) and `<sid>.plan.json` (TTL 30min — explicitly cleared on `PostToolUse`, TTL is a safety net).
+The plugin reads each session's event log every tick and replays it through the pure state machine in `src/session-events.ts` (`reduceEvents`). That function is the single source of truth for state transitions — adding a new state means one new case there plus registering the event in `install-hook.sh`. No `events.json`, no per-state sidecar files, no mtime/TTL/grace heuristics.
+
+The Windows hook is **not copied** — `install-hook.sh --target=windows` registers a PowerShell command that runs `hooks/notification.ps1` directly over `\\wsl.localhost\<distro>\…\hooks\notification.ps1`, so a single repo edit propagates to both. PID liveness still handles the case where a CC process dies hard (no `SessionEnd`): the session disappears from display via `state-tracker.ts`'s `prevLiveIds` check, and the orphan event log is cleaned the next time CC reuses that sessionId (`SessionStart` truncate).
 
 ## Conventions worth knowing
 
 - TypeScript ESM (`"type": "module"`), Node 20, `strict: true`. Source is `src/**/*.ts`, output is `com.julien.claudesessions.sdPlugin/bin/plugin.js` (single bundled file via rollup).
 - Imports use the `.js` extension even for `.ts` files (NodeNext-style). Don't drop the extension.
-- `streamdeck-claude` is wired up to the Stream Deck SDK via `@action({ UUID: "..." })` + `streamDeck.actions.registerAction(slotAction)`. The decorator alone is not enough — manual registration is required.
+- Two Stream Deck actions are registered: `com.julien.claudesessions.slot` (one key per live CC session, in `src/slot-action.ts`) and `com.julien.claudesessions.setup` (a single maintenance key, in `src/setup-action.ts`). Both use the `@action({ UUID: "..." })` decorator AND must be passed to `streamDeck.actions.registerAction(...)` — the decorator alone is not enough.
+- The Setup action's key press (and its property inspector "Refresh States" button) calls `refreshNow()` in `plugin.ts`, which `wipeAllEventLogs()` (deletes every `<sid>.events.ndjson` across both source dirs) then runs an immediate `runSlowTick()`. The PI uses raw WebSocket against the Elgato bridge (`connectElgatoStreamDeckSocket`) — the SDK's TS API is plugin-side only.
 - Background context for Stream Deck plugin development inside WSL lives in the local skill `streamdeck-plugin-wsl` (`.claude/skills/`); session-introspection internals (the `<pid>.json` schema, dual-namespace liveness, hook patterns) are in `claude-code-process-introspection`. Invoke them via the `Skill` tool when relevant.
 - `docs/code-refacto.md` is an audit doc, not authoritative — treat as a record of considered ideas, not a TODO list.

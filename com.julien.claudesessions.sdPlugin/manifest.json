@@ -40,6 +40,24 @@
           "ShowTitle": false
         }
       ]
+    },
+    {
+      "Name": "Claude Setup",
+      "UUID": "com.julien.claudesessions.setup",
+      "Icon": "imgs/actions/setup/icon",
+      "PropertyInspectorPath": "ui/setup.html",
+      "Tooltip": "Refresh and configure the Claude Sessions plugin. Press to wipe all event logs and re-render every slot.",
+      "Controllers": [
+        "Keypad"
+      ],
+      "DisableAutomaticStates": true,
+      "States": [
+        {
+          "Image": "imgs/actions/setup/key",
+          "TitleAlignment": "middle",
+          "ShowTitle": false
+        }
+      ]
     }
   ]
 }
