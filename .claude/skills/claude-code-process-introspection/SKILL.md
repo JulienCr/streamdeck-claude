@@ -150,7 +150,7 @@ Both `~/.claude/settings.json` (WSL) and `%USERPROFILE%\.claude\settings.json` (
 }
 ```
 
-Multiple Notification entries are fine — Claude fires them all. Idempotent installer pattern (`scripts/install-hook.sh`, `scripts/install-hook-windows.sh`):
+Multiple Notification entries are fine — Claude fires them all. Idempotent installer pattern (`scripts/install-hook.sh` with `--target=wsl|windows`):
 
 ```sh
 jq --arg cmd "$HOOK_CMD" '
