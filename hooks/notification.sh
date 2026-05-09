@@ -1,22 +1,26 @@
 #!/usr/bin/env bash
 # Claude Code hook bridge for the streamdeck-claude plugin.
 #
-# Wired up via ~/.claude/settings.json — the same script handles three events,
-# routed by `hook_event_name` (and, for tool events, `tool_name`):
-#
-#   Notification                       -> drop  <sessionId>.notify.json (awaiting permission)
-#   PreToolUse  matcher=ExitPlanMode   -> drop  <sessionId>.plan.json   (awaiting plan approval)
-#   PostToolUse matcher=ExitPlanMode   -> rm    <sessionId>.plan.json   (plan was answered)
+# Wired up via ~/.claude/settings.json — the same script handles every event
+# listed in hooks/events.json (sibling file). Each rule routes a hook event
+# (and optional tool_name) to either:
+#   - drop  <sessionId>.<file>.json (awaiting flag, with reason+mtime)
+#   - rm    <sessionId>.<file>.json (clear flag)
 #
 # The plugin polls those files; presence + recent mtime drives the icon state.
+# To add a new event: edit hooks/events.json — both this script and the
+# PowerShell sibling read the same table.
 
 set -euo pipefail
 
 SESSIONS_DIR="${HOME}/.claude/sessions"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+EVENTS_FILE="${SCRIPT_DIR}/events.json"
+
 INPUT="$(cat)"
 
-EVENT="$(printf '%s' "$INPUT" | jq -r '.hook_event_name // empty' 2>/dev/null || true)"
 SESSION_ID="$(printf '%s' "$INPUT" | jq -r '.session_id // empty' 2>/dev/null || true)"
+EVENT="$(printf '%s' "$INPUT" | jq -r '.hook_event_name // empty' 2>/dev/null || true)"
 TOOL_NAME="$(printf '%s' "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null || true)"
 
 if [ -z "${SESSION_ID:-}" ]; then
@@ -24,24 +28,36 @@ if [ -z "${SESSION_ID:-}" ]; then
   exit 0
 fi
 
-mkdir -p "$SESSIONS_DIR"
-TS_MS="$(date +%s%3N)"
+# Find the first rule whose event matches and (if specified) tool_name matches.
+# Note: `(has("tool_name") | not)` is parenthesized — jq's `|` binds tighter
+# than `or`, so without the parens the boolean from `has` would be piped into
+# the next clauses and crash on "Cannot index boolean".
+MATCH="$(jq -c --arg e "$EVENT" --arg t "$TOOL_NAME" '
+  [ .events[] | select(
+      .event == $e
+      and ((has("tool_name") | not) or .tool_name == null or .tool_name == "" or .tool_name == $t)
+    ) ][0] // empty
+' "$EVENTS_FILE" 2>/dev/null || true)"
 
-case "$EVENT" in
-  Notification)
-    NOTIFY="${SESSIONS_DIR}/${SESSION_ID}.notify.json"
-    printf '{"sessionId":"%s","reason":"awaiting","mtime":%s}\n' "$SESSION_ID" "$TS_MS" > "$NOTIFY"
+if [ -z "$MATCH" ]; then
+  echo '{}'
+  exit 0
+fi
+
+ACTION="$(printf '%s' "$MATCH" | jq -r '.action')"
+FILE="$(printf '%s' "$MATCH" | jq -r '.file')"
+REASON="$(printf '%s' "$MATCH" | jq -r '.reason // ""')"
+
+mkdir -p "$SESSIONS_DIR"
+TARGET="${SESSIONS_DIR}/${SESSION_ID}.${FILE}.json"
+
+case "$ACTION" in
+  drop)
+    TS_MS="$(date +%s%3N)"
+    printf '{"sessionId":"%s","reason":"%s","mtime":%s}\n' "$SESSION_ID" "$REASON" "$TS_MS" > "$TARGET"
     ;;
-  PreToolUse)
-    if [ "$TOOL_NAME" = "ExitPlanMode" ]; then
-      PLAN="${SESSIONS_DIR}/${SESSION_ID}.plan.json"
-      printf '{"sessionId":"%s","reason":"plan","mtime":%s}\n' "$SESSION_ID" "$TS_MS" > "$PLAN"
-    fi
-    ;;
-  PostToolUse)
-    if [ "$TOOL_NAME" = "ExitPlanMode" ]; then
-      rm -f "${SESSIONS_DIR}/${SESSION_ID}.plan.json"
-    fi
+  rm)
+    rm -f "$TARGET"
     ;;
 esac
 

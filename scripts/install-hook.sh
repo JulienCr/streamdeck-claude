@@ -48,6 +48,7 @@ case "$TARGET" in
     ;;
   windows)
     SOURCE_PS1="${ROOT}/hooks/notification.ps1"
+    SOURCE_EVENTS="${ROOT}/hooks/events.json"
     WIN_USER="${WIN_USER:-julie}"
     WIN_HOME="/mnt/c/Users/${WIN_USER}"
 
@@ -59,17 +60,26 @@ case "$TARGET" in
       echo "error: $SOURCE_PS1 missing — run from a checked-out repo" >&2
       exit 1
     fi
+    if [ ! -f "$SOURCE_EVENTS" ]; then
+      echo "error: $SOURCE_EVENTS missing — run from a checked-out repo" >&2
+      exit 1
+    fi
 
     WIN_HOOKS_DIR="${WIN_HOME}/.claude/hooks"
     WIN_HOOK_FILE="${WIN_HOOKS_DIR}/streamdeck-claude-notification.ps1"
+    WIN_EVENTS_FILE="${WIN_HOOKS_DIR}/events.json"
     SETTINGS_PATH="${WIN_HOME}/.claude/settings.json"
     HOOK_CMD="powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"C:\\Users\\${WIN_USER}\\.claude\\hooks\\streamdeck-claude-notification.ps1\""
 
     mkdir -p "$WIN_HOOKS_DIR"
     # Use `command cp` to bypass any `cp -i` alias the user has in their shell.
+    # The .ps1 reads events.json from its own directory at runtime, so both
+    # files MUST live side-by-side in %USERPROFILE%\.claude\hooks\.
     command cp -f "$SOURCE_PS1" "$WIN_HOOK_FILE"
+    command cp -f "$SOURCE_EVENTS" "$WIN_EVENTS_FILE"
     echo "Copied hook script:"
     echo "  $WIN_HOOK_FILE"
+    echo "  $WIN_EVENTS_FILE"
     ;;
 esac
 

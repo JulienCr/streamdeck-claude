@@ -1,0 +1,7 @@
+{
+  "events": [
+    { "event": "Notification",                              "action": "drop", "file": "notify", "reason": "awaiting" },
+    { "event": "PreToolUse",  "tool_name": "ExitPlanMode",  "action": "drop", "file": "plan",   "reason": "plan" },
+    { "event": "PostToolUse", "tool_name": "ExitPlanMode",  "action": "rm",   "file": "plan" }
+  ]
+}
