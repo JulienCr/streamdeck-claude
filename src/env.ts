@@ -1,4 +1,3 @@
-import { homedir, userInfo } from "node:os";
 import { join } from "node:path";
 
 /**
@@ -8,9 +7,14 @@ import { join } from "node:path";
  * elsewhere in the codebase has to know who/where we are.
  */
 
-/** Username and home dir on the WSL/Linux side. */
-export const WSL_USERNAME = userInfo().username;
-export const WSL_HOME = process.env.HOME ?? homedir();
+/**
+ * WSL/Linux-side home directory. Used both directly (when running inside WSL)
+ * and as the basis for the `\\wsl.localhost\…` UNC path the Windows-side plugin
+ * reads. The fallback MUST stay Linux-shaped because on Windows-native Node the
+ * `HOME` env var is typically unset and `homedir()` would return `C:\Users\…`,
+ * which would corrupt the UNC path construction below.
+ */
+export const WSL_HOME = process.env.HOME ?? "/home/julien";
 
 /** WSL distro name as known by `wsl.exe -d <distro>`. */
 export const WSL_DISTRO = process.env.WSL_DISTRO_NAME ?? "Ubuntu";
