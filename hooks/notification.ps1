@@ -1,14 +1,17 @@
 # Claude Code hook bridge for the streamdeck-claude plugin (Windows side).
 # Mirrors hooks/notification.sh — same script handles every event listed in
-# the sibling hooks/events.json file. Each rule routes a hook event (and
-# optional tool_name) to either:
+# the sibling hooks/events.json file (rules are evaluated top-to-bottom;
+# first match wins). Each rule routes a hook event (and optional tool_name)
+# to either:
 #   - drop  <sessionId>.<file>.json (awaiting flag, with reason+mtime)
 #   - rm    <sessionId>.<file>.json (clear flag)
 #
 # Wired up via %USERPROFILE%\.claude\settings.json. Install with:
 #   pnpm install:hook:windows  (scripts/install-hook.sh --target=windows)
-# The install step copies BOTH this .ps1 and events.json into
-# %USERPROFILE%\.claude\hooks\, so the routing table is found at runtime.
+# The install step does NOT copy this file — it registers a hook command
+# that invokes this .ps1 directly from the repo over the
+# `\\wsl.localhost\<distro>\…` UNC path. events.json is read from its sibling
+# location, so a single edit there updates both WSL and Windows hooks.
 
 $ErrorActionPreference = 'SilentlyContinue'
 
@@ -60,7 +63,7 @@ $target = Join-Path $sessionsDir ("{0}.{1}.json" -f $sessionId, $rule.file)
 switch ($rule.action) {
     'drop' {
         $tsMs = [int64]([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())
-        $json = '{"sessionId":"' + $sessionId + '","reason":"' + $rule.reason + '","mtime":' + $tsMs + '}'
+        $json = @{ sessionId = $sessionId; reason = $rule.reason; mtime = $tsMs } | ConvertTo-Json -Compress
         [System.IO.File]::WriteAllText($target, $json)
     }
     'rm' {

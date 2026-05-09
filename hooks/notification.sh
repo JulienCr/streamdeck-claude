@@ -2,8 +2,9 @@
 # Claude Code hook bridge for the streamdeck-claude plugin.
 #
 # Wired up via ~/.claude/settings.json — the same script handles every event
-# listed in hooks/events.json (sibling file). Each rule routes a hook event
-# (and optional tool_name) to either:
+# listed in hooks/events.json (sibling file). Rules are evaluated top-to-bottom;
+# first match wins. Each rule routes a hook event (and optional tool_name) to
+# either:
 #   - drop  <sessionId>.<file>.json (awaiting flag, with reason+mtime)
 #   - rm    <sessionId>.<file>.json (clear flag)
 #

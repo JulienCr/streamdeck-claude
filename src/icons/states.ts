@@ -1,5 +1,4 @@
 import {
-  ANIMATION_FRAMES,
   awaitingPulse,
   emptyDashed,
   finishedCheck,
@@ -7,8 +6,6 @@ import {
   planPulse,
   spinnerArc,
 } from "./motifs.js";
-
-export { ANIMATION_FRAMES };
 
 type Palette = { bg: string; accent: string; label: string };
 type MotifFn = (frame: number, color: string) => string;

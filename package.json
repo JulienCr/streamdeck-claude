@@ -7,7 +7,7 @@
   "scripts": {
     "build": "rollup -c",
     "watch": "rollup -c -w --watch.onEnd=\"bash scripts/reload-plugin.sh\"",
-    "icons:render": "pnpm dlx tsx scripts/render-icons.mjs",
+    "icons:render": "tsx scripts/render-icons.mjs",
     "icons:static": "node scripts/render-static-pngs.mjs",
     "install:hook": "bash scripts/install-hook.sh",
     "install:hook:windows": "bash scripts/install-hook.sh --target=windows",
@@ -30,6 +30,7 @@
     "cross-env": "^10.1.0",
     "rollup": "^4.0.2",
     "tslib": "^2.6.2",
+    "tsx": "^4.21.0",
     "typescript": "^5.2.2"
   },
   "dependencies": {
