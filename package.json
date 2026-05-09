@@ -11,6 +11,7 @@
     "icons:static": "node scripts/render-static-pngs.mjs",
     "install:hook": "bash scripts/install-hook.sh",
     "install:hook:windows": "bash scripts/install-hook.sh --target=windows",
+    "check:hooks": "bash scripts/check-hooks.sh",
     "sd:link": "bash scripts/link-plugin.sh",
     "sd:unlink": "bash scripts/unlink-plugin.sh",
     "sd:validate": "cross-env HOME=/mnt/c/Users/julie pnpm exec streamdeck validate com.julien.claudesessions.sdPlugin",
