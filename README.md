@@ -24,7 +24,7 @@ Reference SVGs of the five states live in [`icons/`](./icons).
 
 ## Setup (one-time)
 
-Prereqs: pnpm, jq, Python 3 (for static PNG icons via Pillow), Node.js 20+, an Elgato Stream Deck connected to a Windows host with the Stream Deck app installed and Windows Developer Mode enabled (lets `mklink /D` work without admin).
+Prereqs: pnpm, jq, Node.js 20+, an Elgato Stream Deck connected to a Windows host with the Stream Deck app installed and Windows Developer Mode enabled (lets `mklink /D` work without admin).
 
 ```bash
 pnpm install
@@ -60,7 +60,7 @@ After linking, **quit + relaunch the Stream Deck app** (right-click tray icon �
 | `pnpm install:hook` | Idempotently merge the Notification hook into WSL `~/.claude/settings.json` |
 | `pnpm install:hook:windows` | Same for Windows `%USERPROFILE%\.claude\settings.json` (copies a PowerShell hook) |
 | `pnpm icons:render` | Re-render `icons/*.svg` reference assets from `src/icons/` |
-| `pnpm icons:static` | Re-render manifest PNG assets via PIL |
+| `pnpm icons:static` | Re-render manifest PNG assets from `assets/svg/` via @resvg/resvg-js |
 
 > **Reload flow.** The plugin watches `~/.claude/.streamdeck-claude.reload`; whenever its mtime changes, the plugin calls `process.exit(0)` and the Stream Deck app respawns it (this is the SD app's normal behaviour for plugin crashes). `pnpm sd:reload` just `touch`es the file. `pnpm watch` triggers it automatically on each rebuild.
 >
@@ -94,7 +94,7 @@ Plugin logs land at `%APPDATA%\Elgato\StreamDeck\Plugins\com.julien.claudesessio
     ├── unlink-plugin.sh                  # removes the symlink
     ├── reload-plugin.sh                  # touches the reload trigger to respawn the plugin
     ├── render-icons.mjs                  # regenerates icons/*.svg from src/icons/
-    └── render-static-pngs.py             # regenerates manifest PNG assets (PIL)
+    └── render-static-pngs.mjs            # rasterizes assets/svg/*.svg into manifest PNGs (@resvg/resvg-js)
 ```
 
 ## Tweaks
