@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">
+<rect width="144" height="144" fill="#1a1208"/>
+<rect x="5" y="5" width="134" height="134" rx="20" fill="none" stroke="#f97316" stroke-width="5" stroke-linejoin="round" opacity="0.95"/>
+<text x="128" y="22" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="10" font-weight="700" fill="#f97316" opacity="0.8" text-anchor="end">3</text>
+<text x="72" y="30" font-family="-apple-system,Segoe UI,Roboto,sans-serif" font-size="19" font-weight="700" fill="#f97316" text-anchor="middle">ascory</text>
+<g><circle cx="72" cy="60" r="31.0" fill="none" stroke="#f97316" stroke-width="5.0" opacity="1.00"/>
+<path d="M62 50 Q62 40 72 40 Q82 40 82 50 Q82 58 75 62 Q72 64 72 70" fill="none" stroke="#f97316" stroke-width="5" stroke-linecap="round"/>
+<circle cx="72" cy="78" r="3" fill="#f97316"/></g>
+<text x="72" y="100" font-family="-apple-system,Segoe UI,Roboto,sans-serif" font-size="17" font-weight="600" fill="#fed7aa" text-anchor="middle">website</text>
+
+</svg>
