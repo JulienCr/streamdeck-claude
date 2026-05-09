@@ -89,6 +89,19 @@ function tick(sessions, live) {
 }
 ```
 
+## Plan-approval hook — surfacing `ExitPlanMode` waits
+
+Claude's `ExitPlanMode` tool pauses the assistant until the user clicks Approve or Reject. There is no dedicated event for "plan presented to user" — but the `PreToolUse`/`PostToolUse` hooks fire for every tool call, including this one, and accept a `matcher` field to scope by tool name:
+
+```json
+"PreToolUse":  [{ "matcher": "ExitPlanMode", "hooks": [{ "type": "command", "command": "..." }]}],
+"PostToolUse": [{ "matcher": "ExitPlanMode", "hooks": [{ "type": "command", "command": "..." }]}]
+```
+
+We use the same notify-file pattern: PreToolUse drops `<sessionId>.plan.json`, PostToolUse removes it. PostToolUse fires both on Approve (when Claude resumes and processes the tool result) and on Reject (when Claude iterates on the plan), so the file always gets cleared. The consumer treats `status=idle` + plan file present (mtime within ~30 min as a safety TTL) as the awaiting-plan state, and prioritises it over the simpler awaiting-permission state.
+
+The hook script is the same one used for `Notification` — it routes by `hook_event_name` (and, for tool events, `tool_name`) read from the JSON stdin payload. One installed command, three settings entries (`Notification`, `PreToolUse[ExitPlanMode]`, `PostToolUse[ExitPlanMode]`). Reference: `hooks/notification.sh` + `hooks/notification.ps1`.
+
 ## Notification hook — surfacing "awaiting permission"
 
 Claude Code fires the `Notification` hook event when it needs the user (permission prompts, idle prompt). The hook stdin is JSON:

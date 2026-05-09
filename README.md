@@ -4,10 +4,11 @@ A Stream Deck plugin that mirrors the live state of your running Claude Code CLI
 
 | State | Color | Meaning |
 |---|---|---|
-| working | green | Claude is generating / running tools |
+| working | amber | Claude is generating / running tools |
 | idle | blue | Claude is waiting for your next prompt |
-| awaiting | orange | Claude has popped a permission/question prompt — your turn |
-| finished | gray | The session just ended (visible for ~3 s, then drops) |
+| awaiting | orange (pulsing) | Claude has popped a permission prompt — your turn |
+| awaiting_plan | violet (pulsing) | Claude has called `ExitPlanMode` and is waiting for plan approval |
+| finished | green | The session just ended (visible for ~3 s, then drops) |
 | empty | dim | No session in this slot |
 
 Pressing a key copies the session's project path (`cwd`) to the clipboard.
@@ -19,6 +20,7 @@ Reference SVGs of the five states live in [`icons/`](./icons).
 - Claude Code writes one JSON file per running CLI session under `~/.claude/sessions/<pid>.json`.
 - The plugin polls that directory once per second, batches a `kill -0 <pid>` check (over `wsl.exe -d Ubuntu` on Windows hosts) to filter out stale files, sorts the live sessions by `startedAt`, and renders an SVG per slot via `setImage`.
 - The "awaiting permission" state is fed by a Claude Code `Notification` hook that drops `~/.claude/sessions/<sessionId>.notify.json` whenever Claude needs the user's attention. The plugin treats `status=idle` + recent (<60 s mtime) notify file as `awaiting`.
+- The "awaiting plan approval" state is fed by `PreToolUse` and `PostToolUse` hooks scoped to the `ExitPlanMode` tool. The pre-hook drops `<sessionId>.plan.json`, the post-hook removes it. While the file exists and the session is idle, the slot shows the violet pulsing "plan" icon.
 
 ## Setup (one-time)
 
