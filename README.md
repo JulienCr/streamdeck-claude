@@ -59,7 +59,7 @@ After linking, **quit + relaunch the Stream Deck app** (right-click tray icon �
 | `pnpm sd:reload` | Reload **just** this plugin in ~1 s without quitting the SD app |
 | `pnpm install:hook` | Idempotently merge the Notification hook into WSL `~/.claude/settings.json` |
 | `pnpm install:hook:windows` | Same for Windows `%USERPROFILE%\.claude\settings.json` (copies a PowerShell hook) |
-| `pnpm icons:render` | Re-render `icons/*.svg` reference assets from `src/icons.ts` |
+| `pnpm icons:render` | Re-render `icons/*.svg` reference assets from `src/icons/` |
 | `pnpm icons:static` | Re-render manifest PNG assets via PIL |
 
 > **Reload flow.** The plugin watches `~/.claude/.streamdeck-claude.reload`; whenever its mtime changes, the plugin calls `process.exit(0)` and the Stream Deck app respawns it (this is the SD app's normal behaviour for plugin crashes). `pnpm sd:reload` just `touch`es the file. `pnpm watch` triggers it automatically on each rebuild.
@@ -83,18 +83,17 @@ Plugin logs land at `%APPDATA%\Elgato\StreamDeck\Plugins\com.julien.claudesessio
 │   ├── slot-action.ts                    # SingletonAction, key handlers
 │   ├── sessions.ts                       # reads ~/.claude/sessions/
 │   ├── live-pids.ts                      # batched kill -0 over wsl.exe
-│   └── icons.ts                          # renderIcon(state, slot, label) -> SVG
+│   └── icons/                            # renderIcon(state, slot, label) -> SVG; theme, motifs, states, render — split per concern
 ├── icons/                                # standalone reference SVGs (one per state)
 ├── hooks/
 │   ├── notification.sh                   # WSL-side Notification hook (Bash)
 │   └── notification.ps1                  # Windows-side Notification hook (PowerShell)
 └── scripts/
-    ├── install-hook.sh                   # merge hook into WSL ~/.claude/settings.json
-    ├── install-hook-windows.sh           # copy + merge into %USERPROFILE%\.claude\settings.json
+    ├── install-hook.sh                   # merge hook into WSL ~/.claude/settings.json (also `--target=windows` to copy + merge into %USERPROFILE%\.claude\settings.json)
     ├── link-plugin.sh                    # mklinks the .sdPlugin into Windows Plugins dir
     ├── unlink-plugin.sh                  # removes the symlink
     ├── reload-plugin.sh                  # touches the reload trigger to respawn the plugin
-    ├── render-icons.mjs                  # regenerates icons/*.svg from src/icons.ts
+    ├── render-icons.mjs                  # regenerates icons/*.svg from src/icons/
     └── render-static-pngs.py             # regenerates manifest PNG assets (PIL)
 ```
 
@@ -103,7 +102,7 @@ Plugin logs land at `%APPDATA%\Elgato\StreamDeck\Plugins\com.julien.claudesessio
 - **Different WSL distro**: set `WSL_DISTRO_NAME` (auto-detected by `link-plugin.sh`); the runtime currently hard-codes `Ubuntu` in `src/sessions.ts` and `src/live-pids.ts` — change there if needed.
 - **Different home path on Windows side**: edit `sessionsDir` in `src/sessions.ts`.
 - **More than 5 keys**: just drop more `Claude Session Slot` actions; the plugin orders them by deck position (top-to-bottom, left-to-right) and renders as many as you give it. Sessions in excess of available keys are not displayed.
-- **Different icon designs**: edit `src/icons.ts`, then `node --experimental-strip-types scripts/render-icons.mjs` to refresh the reference SVGs in `icons/`.
+- **Different icon designs**: edit `src/icons/`, then `pnpm icons:render` to refresh the reference SVGs in `icons/`.
 
 ## Verification checklist
 
