@@ -99,8 +99,8 @@ Plugin logs land at `%APPDATA%\Elgato\StreamDeck\Plugins\com.julien.claudesessio
 
 ## Tweaks
 
-- **Different WSL distro**: set `WSL_DISTRO_NAME` (auto-detected by `link-plugin.sh`); the runtime currently hard-codes `Ubuntu` in `src/sessions.ts` and `src/live-pids.ts` — change there if needed.
-- **Different home path on Windows side**: edit `sessionsDir` in `src/sessions.ts`.
+- **Different WSL distro**: set the `WSL_DISTRO_NAME` env var. Auto-detected by `link-plugin.sh` and read at runtime via `src/env.ts`.
+- **Different Windows username / home path**: `USERPROFILE` is set by Windows and used directly. For a different WSL home, set `HOME` before launching the plugin. All path resolution lives in `src/env.ts`.
 - **More than 5 keys**: just drop more `Claude Session Slot` actions; the plugin orders them by deck position (top-to-bottom, left-to-right) and renders as many as you give it. Sessions in excess of available keys are not displayed.
 - **Different icon designs**: edit `src/icons/`, then `pnpm icons:render` to refresh the reference SVGs in `icons/`.
 
