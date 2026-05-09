@@ -1,7 +1,7 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import { platform } from "node:os";
 import { join } from "node:path";
-import type { SessionState } from "./icons.js";
+import type { SessionState } from "./icons/index.js";
 import { WIN_SESSIONS_DIR, WSL_SESSIONS_DIR, WSL_SESSIONS_DIR_FROM_WIN } from "./env.js";
 
 /** WSL or Windows-native Claude Code session — they live in different folders
