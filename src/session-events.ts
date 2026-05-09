@@ -20,22 +20,39 @@ export interface DerivedState {
   subagentDepth: number;
 }
 
-const ZERO: DerivedState = { awaiting: false, awaitingPlan: false, errored: false, subagentDepth: 0 };
+/** Internal accumulator: same as DerivedState plus `inTurn`, which is true
+ *  between UserPromptSubmit and Stop/StopFailure. Used to tell apart a real
+ *  permission/input prompt (Notification fired mid-turn — CC actually needs
+ *  the user) from an idle reminder (Notification fired ~60s after Stop —
+ *  CC's bell-like "you've gone afk" nudge, not an actual question). */
+interface ReducerState extends DerivedState {
+  inTurn: boolean;
+}
+
+const ZERO: ReducerState = { awaiting: false, awaitingPlan: false, errored: false, subagentDepth: 0, inTurn: false };
 
 export function reduceEvents(events: readonly SessionEvent[]): DerivedState {
   let state = ZERO;
   for (const ev of events) state = applyEvent(state, ev);
-  return state;
+  // Strip the internal flag — callers only get the public projection.
+  const { inTurn: _inTurn, ...derived } = state;
+  return derived;
 }
 
-function applyEvent(state: DerivedState, ev: SessionEvent): DerivedState {
+function applyEvent(state: ReducerState, ev: SessionEvent): ReducerState {
   switch (ev.event) {
     case "SessionStart":
     case "SessionEnd":
       return ZERO;
 
+    case "UserPromptSubmit":
+      return { ...state, inTurn: true, awaiting: false, awaitingPlan: false, errored: false };
+
     case "Notification":
-      return { ...state, awaiting: true };
+      // Only an in-turn Notification is a real prompt to the user. After Stop,
+      // CC keeps firing Notification every ~60 s as an idle reminder — those
+      // would falsely flip the icon to awaiting while the user is afk.
+      return state.inTurn ? { ...state, awaiting: true } : state;
 
     case "PreToolUse":
       return ev.tool === "ExitPlanMode" ? { ...state, awaitingPlan: true } : state;
@@ -44,13 +61,10 @@ function applyEvent(state: DerivedState, ev: SessionEvent): DerivedState {
       return ev.tool === "ExitPlanMode" ? { ...state, awaitingPlan: false } : state;
 
     case "Stop":
-      return { ...state, awaiting: false, awaitingPlan: false };
+      return { ...state, inTurn: false, awaiting: false, awaitingPlan: false };
 
     case "StopFailure":
-      return { ...state, awaiting: false, awaitingPlan: false, errored: true };
-
-    case "UserPromptSubmit":
-      return { ...state, awaiting: false, awaitingPlan: false, errored: false };
+      return { ...state, inTurn: false, awaiting: false, awaitingPlan: false, errored: true };
 
     case "SubagentStart":
       return { ...state, subagentDepth: state.subagentDepth + 1 };
