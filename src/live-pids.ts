@@ -1,11 +1,12 @@
 import { spawn } from "node:child_process";
 import { platform } from "node:os";
 import type { SessionInfo, SessionOrigin } from "./sessions.js";
+import { WSL_DISTRO } from "./env.js";
 
 /**
  * Returns the subset of sessions whose process is currently running.
  *
- * WSL sessions are checked via `wsl.exe -d Ubuntu -- kill -0`. Windows-native
+ * WSL sessions are checked via `wsl.exe -d <distro> -- kill -0`. Windows-native
  * sessions are checked via `tasklist.exe /FI "PID eq <n>"` — those PIDs live
  * in a different process namespace and aren't visible to WSL. Both checks run
  * in parallel.
@@ -44,7 +45,7 @@ async function checkWslLive(pids: number[]): Promise<{ live: Set<number>; error?
   if (pids.length === 0) return { live: new Set(), fromCache: false };
   const script = pids.map((p) => `kill -0 ${p} 2>/dev/null && echo ${p}`).join("; ");
   const cmd = platform() === "win32" ? "wsl.exe" : "bash";
-  const args = platform() === "win32" ? ["-d", "Ubuntu", "--", "bash", "-c", script] : ["-c", script];
+  const args = platform() === "win32" ? ["-d", WSL_DISTRO, "--", "bash", "-c", script] : ["-c", script];
   return parseAndCache("wsl", await spawnCapture(cmd, args), pids, parsePidsFromLines);
 }
 

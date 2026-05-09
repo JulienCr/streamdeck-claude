@@ -10,8 +10,8 @@ import {
 } from "./sessions.js";
 import { filterLiveSessions } from "./live-pids.js";
 import { stat } from "node:fs/promises";
-import { join } from "node:path";
 import { platform } from "node:os";
+import { WSL_RELOAD_FILE, WSL_RELOAD_FILE_FROM_WIN } from "./env.js";
 
 streamDeck.logger.setLevel(LogLevel.DEBUG);
 
@@ -22,9 +22,7 @@ streamDeck.logger.setLevel(LogLevel.DEBUG);
  *
  * Touch with `pnpm sd:reload` from the dev box.
  */
-const RELOAD_FILE = platform() === "win32"
-  ? `\\\\wsl.localhost\\Ubuntu\\home\\julien\\.claude\\.streamdeck-claude.reload`
-  : join(process.env.HOME ?? "/home/julien", ".claude", ".streamdeck-claude.reload");
+const RELOAD_FILE = platform() === "win32" ? WSL_RELOAD_FILE_FROM_WIN : WSL_RELOAD_FILE;
 
 // Anything newer than this counts as a reload trigger. Captured at process start
 // so a fresh file written *after* startup is correctly detected as an event.

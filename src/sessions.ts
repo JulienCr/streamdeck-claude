@@ -1,7 +1,8 @@
 import { readdir, readFile, stat } from "node:fs/promises";
-import { homedir, platform } from "node:os";
+import { platform } from "node:os";
 import { join } from "node:path";
 import type { SessionState } from "./icons.js";
+import { WIN_SESSIONS_DIR, WSL_SESSIONS_DIR, WSL_SESSIONS_DIR_FROM_WIN } from "./env.js";
 
 /** WSL or Windows-native Claude Code session — they live in different folders
  *  with different process namespaces and need different liveness checks. */
@@ -13,15 +14,15 @@ export interface SessionSourceDir {
 }
 
 /** Where Claude Code writes per-pid session state. From a Windows-side plugin
- *  we read both the WSL home (over the `\\wsl.localhost\Ubuntu` UNC) and the
+ *  we read both the WSL home (over the `\\wsl.localhost\<distro>` UNC) and the
  *  Windows home. From a Linux-side plugin only WSL sessions are visible. */
 export const SESSION_SOURCES: SessionSourceDir[] = platform() === "win32"
   ? [
-      { origin: "wsl", path: `\\\\wsl.localhost\\Ubuntu\\home\\julien\\.claude\\sessions` },
-      { origin: "windows", path: `C:\\Users\\julie\\.claude\\sessions` },
+      { origin: "wsl", path: WSL_SESSIONS_DIR_FROM_WIN },
+      { origin: "windows", path: WIN_SESSIONS_DIR },
     ]
   : [
-      { origin: "wsl", path: join(homedir(), ".claude", "sessions") },
+      { origin: "wsl", path: WSL_SESSIONS_DIR },
     ];
 
 /** Surface readdir errors to the polling loop so it can log them once. */
