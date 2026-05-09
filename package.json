@@ -8,7 +8,7 @@
     "build": "rollup -c",
     "watch": "rollup -c -w --watch.onEnd=\"bash scripts/reload-plugin.sh\"",
     "icons:render": "pnpm dlx tsx scripts/render-icons.mjs",
-    "icons:static": "python3 scripts/render-static-pngs.py",
+    "icons:static": "node scripts/render-static-pngs.mjs",
     "install:hook": "bash scripts/install-hook.sh",
     "install:hook:windows": "bash scripts/install-hook.sh --target=windows",
     "sd:link": "bash scripts/link-plugin.sh",
@@ -20,6 +20,7 @@
   },
   "devDependencies": {
     "@elgato/cli": "^1.7.4",
+    "@resvg/resvg-js": "^2.6.2",
     "@rollup/plugin-commonjs": "^28.0.0",
     "@rollup/plugin-node-resolve": "^15.2.2",
     "@rollup/plugin-terser": "^0.4.4",
