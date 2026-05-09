@@ -38,7 +38,7 @@ pnpm sd:validate             # sanity-check manifest + assets
 
 The two `install:hook` scripts are idempotent — re-run any time. They install:
 - **WSL**: a Bash hook (`hooks/notification.sh`) referenced by an absolute WSL path.
-- **Windows**: a PowerShell hook (`hooks/notification.ps1`) copied to `%USERPROFILE%\.claude\hooks\streamdeck-claude-notification.ps1` and invoked via `powershell.exe -File ...`. We use a copy rather than a `\\wsl.localhost\…` reference so the hook keeps working even if WSL is suspended.
+- **Windows**: a PowerShell hook command pointing at `hooks/notification.ps1` over the `\\wsl.localhost\<distro>\…` UNC path. **No copy** — both bash and PowerShell sides read the same `hooks/events.json` from the repo, so editing it once propagates to both.
 
 Both hooks behave identically: they read the Notification event from stdin, extract `session_id`, and drop `<sessionId>.notify.json` next to that side's session JSON files. The plugin reads both directories and treats a fresh notify file (mtime <60 s) on an idle session as the orange "awaiting" state.
 
@@ -58,7 +58,7 @@ After linking, **quit + relaunch the Stream Deck app** (right-click tray icon �
 | `pnpm sd:dev` | Enable Stream Deck developer mode |
 | `pnpm sd:reload` | Reload **just** this plugin in ~1 s without quitting the SD app |
 | `pnpm install:hook` | Idempotently merge the Notification hook into WSL `~/.claude/settings.json` |
-| `pnpm install:hook:windows` | Same for Windows `%USERPROFILE%\.claude\settings.json` (copies a PowerShell hook) |
+| `pnpm install:hook:windows` | Same for Windows `%USERPROFILE%\.claude\settings.json` (registers the PowerShell hook over the WSL UNC path; no copy) |
 | `pnpm icons:render` | Re-render `icons/*.svg` reference assets from `src/icons/` |
 | `pnpm icons:static` | Re-render manifest PNG assets from `assets/svg/` via @resvg/resvg-js |
 
@@ -99,8 +99,8 @@ Plugin logs land at `%APPDATA%\Elgato\StreamDeck\Plugins\com.julien.claudesessio
 
 ## Tweaks
 
-- **Different WSL distro**: set the `WSL_DISTRO_NAME` env var. Auto-detected by `link-plugin.sh` and read at runtime via `src/env.ts`.
-- **Different Windows username / home path**: `USERPROFILE` is set by Windows and used directly. For a different WSL home, set `HOME` before launching the plugin. All path resolution lives in `src/env.ts`.
+- **Different WSL distro**: set the `WSL_DISTRO_NAME` env var. Auto-detected by `link-plugin.sh` and `install-hook.sh`; baked into the bundle at `pnpm build` time so the SD-launched plugin (which doesn't see WSL env vars) still resolves the right UNC path.
+- **Different Windows username / home path**: `USERPROFILE` is set by Windows and used directly. For a different WSL home, just `pnpm build` from that home — `HOME` at build time is captured by rollup and baked into the bundle. All path resolution lives in `src/env.ts`.
 - **More than 5 keys**: just drop more `Claude Session Slot` actions; the plugin orders them by deck position (top-to-bottom, left-to-right) and renders as many as you give it. Sessions in excess of available keys are not displayed.
 - **Different icon designs**: edit `src/icons/`, then `pnpm icons:render` to refresh the reference SVGs in `icons/`.
 

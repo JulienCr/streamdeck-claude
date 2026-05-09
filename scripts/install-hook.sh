@@ -13,9 +13,12 @@
 #   bash scripts/install-hook.sh --target=wsl
 #   bash scripts/install-hook.sh --target=windows
 #
-# For --target=windows: copies hooks/notification.ps1 to
-# %USERPROFILE%\.claude\hooks\streamdeck-claude-notification.ps1 first.
-# Override the Windows username with WIN_USER=<name> (default: julie).
+# For --target=windows: registers a hook command that invokes the repo's
+# hooks/notification.ps1 directly over `\\wsl.localhost\<distro>\…` UNC.
+# Nothing is copied — the .ps1 reads its sibling events.json from the same
+# UNC dir, so a single `events.json` edit applies to both WSL and Windows.
+# Override the Windows username with WIN_USER=<name> (default: julie) and
+# the WSL distro with WSL_DISTRO_NAME (default: Ubuntu).
 #
 # Safe to re-run.
 
@@ -51,6 +54,7 @@ case "$TARGET" in
     SOURCE_EVENTS="${ROOT}/hooks/events.json"
     WIN_USER="${WIN_USER:-julie}"
     WIN_HOME="/mnt/c/Users/${WIN_USER}"
+    WSL_DISTRO="${WSL_DISTRO_NAME:-Ubuntu}"
 
     if [ ! -d "$WIN_HOME" ]; then
       echo "error: Windows user dir not found at $WIN_HOME (set WIN_USER env var)" >&2
@@ -65,21 +69,14 @@ case "$TARGET" in
       exit 1
     fi
 
-    WIN_HOOKS_DIR="${WIN_HOME}/.claude/hooks"
-    WIN_HOOK_FILE="${WIN_HOOKS_DIR}/streamdeck-claude-notification.ps1"
-    WIN_EVENTS_FILE="${WIN_HOOKS_DIR}/events.json"
+    # Reference the repo's .ps1 directly over the WSL UNC path. Same trick
+    # the runtime plugin uses for sessions: \\wsl.localhost\<distro>\<linux-path>.
+    PS1_UNC="\\\\wsl.localhost\\${WSL_DISTRO}${SOURCE_PS1//\//\\}"
     SETTINGS_PATH="${WIN_HOME}/.claude/settings.json"
-    HOOK_CMD="powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"C:\\Users\\${WIN_USER}\\.claude\\hooks\\streamdeck-claude-notification.ps1\""
+    HOOK_CMD="powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"${PS1_UNC}\""
 
-    mkdir -p "$WIN_HOOKS_DIR"
-    # Use `command cp` to bypass any `cp -i` alias the user has in their shell.
-    # The .ps1 reads events.json from its own directory at runtime, so both
-    # files MUST live side-by-side in %USERPROFILE%\.claude\hooks\.
-    command cp -f "$SOURCE_PS1" "$WIN_HOOK_FILE"
-    command cp -f "$SOURCE_EVENTS" "$WIN_EVENTS_FILE"
-    echo "Copied hook script:"
-    echo "  $WIN_HOOK_FILE"
-    echo "  $WIN_EVENTS_FILE"
+    echo "Hook target (no copy — read live from repo over UNC):"
+    echo "  $PS1_UNC"
     ;;
 esac
 

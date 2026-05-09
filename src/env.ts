@@ -1,26 +1,45 @@
 import { join } from "node:path";
+import { platform, userInfo } from "node:os";
 
 /**
  * Single source of truth for user-, distro- and host-specific paths used by
- * the plugin. Resolved once at module load via env vars (HOME, USERPROFILE,
- * WSL_DISTRO_NAME) with sensible fallbacks, so no runtime path string
- * elsewhere in the codebase has to know who/where we are.
+ * the plugin.
+ *
+ * The plugin runs inside the Stream Deck app on Windows, where neither `HOME`
+ * nor `WSL_DISTRO_NAME` is set. To keep the bundle portable, rollup's
+ * `inject-build-env` transform replaces the two `__BUILD_*__` sentinels below
+ * with whatever values were live at build time (which always runs from WSL).
+ * At runtime, real env vars take precedence; the baked defaults are the
+ * fallback.
+ *
+ * If the sentinels somehow survived the build (e.g. running an unbuilt module
+ * directly), `assertResolved` catches it before any path is constructed.
  */
 
-/**
- * WSL/Linux-side home directory. Used both directly (when running inside WSL)
- * and as the basis for the `\\wsl.localhost\…` UNC path the Windows-side plugin
- * reads. The fallback MUST stay Linux-shaped because on Windows-native Node the
- * `HOME` env var is typically unset and `homedir()` would return `C:\Users\…`,
- * which would corrupt the UNC path construction below.
- */
-export const WSL_HOME = process.env.HOME ?? "/home/julien";
+const BUILD_WSL_HOME = "__BUILD_WSL_HOME__";
+const BUILD_WSL_DISTRO = "__BUILD_WSL_DISTRO__";
+
+function assertResolved(name: string, value: string): string {
+  if (value.startsWith("__BUILD_") && value.endsWith("__")) {
+    throw new Error(
+      `streamdeck-claude env: ${name} was never replaced — run \`pnpm build\` from WSL with HOME and WSL_DISTRO_NAME set, or set ${name} in the runtime env.`,
+    );
+  }
+  return value;
+}
+
+/** WSL/Linux-side home directory. Used directly inside WSL and as the basis
+ *  for the UNC path the Windows-side plugin reads. */
+export const WSL_HOME = process.env.HOME
+  ?? (platform() === "win32" ? assertResolved("HOME", BUILD_WSL_HOME) : `/home/${userInfo().username}`);
 
 /** WSL distro name as known by `wsl.exe -d <distro>`. */
-export const WSL_DISTRO = process.env.WSL_DISTRO_NAME ?? "Ubuntu";
+export const WSL_DISTRO = process.env.WSL_DISTRO_NAME ?? assertResolved("WSL_DISTRO_NAME", BUILD_WSL_DISTRO);
 
-/** Windows user profile dir. Only meaningful when running on win32. */
-export const WIN_HOME = process.env.USERPROFILE ?? "C:\\Users\\julie";
+/** Windows user profile dir. Always set by Windows; we refuse to fall back. */
+export const WIN_HOME = platform() === "win32"
+  ? (process.env.USERPROFILE ?? (() => { throw new Error("streamdeck-claude env: USERPROFILE is not set on win32"); })())
+  : (process.env.USERPROFILE ?? "");
 
 /** Where Claude Code stores per-pid session JSON, viewed from the WSL side. */
 export const WSL_SESSIONS_DIR = join(WSL_HOME, ".claude", "sessions");

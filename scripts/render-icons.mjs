@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Re-renders icons/<state>.svg from the same templates the runtime uses.
-// Run with:  pnpm icons:render   (which invokes `pnpm dlx tsx` under the hood).
+// Run with:  pnpm icons:render   (which invokes the local `tsx` devDep).
 //
 // Why tsx? The icons modules use `.js` specifiers for ESM imports (project
 // convention) but the underlying files are `.ts`. Node's bare
