@@ -1,0 +1,9 @@
+node_modules/
+com.julien.claudesessions.sdPlugin/bin/
+com.julien.claudesessions.sdPlugin/logs/
+*.log
+.DS_Store
+
+# Build artifacts
+*.tgz
+dist/

@@ -1,0 +1,37 @@
+{
+  "name": "streamdeck-claude",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Stream Deck plugin showing live Claude Code CLI session states",
+  "scripts": {
+    "build": "rollup -c",
+    "watch": "rollup -c -w --watch.onEnd=\"bash scripts/reload-plugin.sh\"",
+    "icons:render": "node --experimental-strip-types scripts/render-icons.mjs",
+    "icons:static": "python3 scripts/render-static-pngs.py",
+    "install:hook": "bash scripts/install-hook.sh",
+    "install:hook:windows": "bash scripts/install-hook-windows.sh",
+    "sd:link": "bash scripts/link-plugin.sh",
+    "sd:unlink": "bash scripts/unlink-plugin.sh",
+    "sd:validate": "cross-env HOME=/mnt/c/Users/julie pnpm exec streamdeck validate com.julien.claudesessions.sdPlugin",
+    "sd:pack": "cross-env HOME=/mnt/c/Users/julie pnpm exec streamdeck pack com.julien.claudesessions.sdPlugin --output dist/",
+    "sd:dev": "cross-env HOME=/mnt/c/Users/julie pnpm exec streamdeck dev",
+    "sd:reload": "bash scripts/reload-plugin.sh"
+  },
+  "devDependencies": {
+    "@elgato/cli": "^1.7.4",
+    "@rollup/plugin-commonjs": "^28.0.0",
+    "@rollup/plugin-node-resolve": "^15.2.2",
+    "@rollup/plugin-terser": "^0.4.4",
+    "@rollup/plugin-typescript": "^12.1.0",
+    "@tsconfig/node20": "^20.1.2",
+    "@types/node": "~20.15.0",
+    "cross-env": "^10.1.0",
+    "rollup": "^4.0.2",
+    "tslib": "^2.6.2",
+    "typescript": "^5.2.2"
+  },
+  "dependencies": {
+    "@elgato/streamdeck": "^1.0.0"
+  }
+}
