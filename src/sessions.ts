@@ -34,6 +34,12 @@ const NOTIFY_TTL_MS = 60_000;
  *  un-approved while they read other things, and we explicitly clear the file
  *  on PostToolUse so TTL is just a safety net. */
 const PLAN_TTL_MS = 30 * 60_000;
+/** "Errored turn" stays visible just long enough to notice, then fades.
+ *  Mirrors NOTIFY_TTL_MS — same surface-then-clear cadence. */
+const ERROR_TTL_MS = 60_000;
+/** "Subagent active" file is explicitly cleared by SubagentStop; TTL is a
+ *  safety net for cases where Stop never fires (subagent crash, killed CC). */
+const SUBAGENT_TTL_MS = 30 * 60_000;
 
 interface RawSession {
   pid: number;
@@ -57,6 +63,10 @@ export interface SessionInfo {
   awaiting: boolean;
   /** Set if a fresh "awaiting plan approval" notify file exists. */
   awaitingPlan: boolean;
+  /** Set if a fresh "errored turn" file exists (StopFailure hook). */
+  errored: boolean;
+  /** Set if a fresh "subagent active" file exists (SubagentStart hook). */
+  subagentActive: boolean;
   origin: SessionOrigin;
 }
 
@@ -112,6 +122,22 @@ async function readOneSource(src: SessionSourceDir): Promise<SessionInfo[]> {
           // no plan file
         }
 
+        let errored = false;
+        try {
+          const errorStat = await stat(join(src.path, `${raw.sessionId}.error.json`));
+          errored = Date.now() - errorStat.mtimeMs < ERROR_TTL_MS;
+        } catch {
+          // no error file
+        }
+
+        let subagentActive = false;
+        try {
+          const subagentStat = await stat(join(src.path, `${raw.sessionId}.subagent.json`));
+          subagentActive = Date.now() - subagentStat.mtimeMs < SUBAGENT_TTL_MS;
+        } catch {
+          // no subagent file
+        }
+
         out.push({
           pid: raw.pid,
           sessionId: raw.sessionId,
@@ -121,6 +147,8 @@ async function readOneSource(src: SessionSourceDir): Promise<SessionInfo[]> {
           rawStatus: status,
           awaiting,
           awaitingPlan,
+          errored,
+          subagentActive,
           origin: src.origin,
         });
       }),
@@ -136,12 +164,16 @@ export async function readAllSessions(): Promise<SessionInfo[]> {
   return results.flat();
 }
 
-/** State for the icon, derived from session status + notify/plan presence + liveness.
- *  Priority when idle: plan-approval > permission-prompt > plain idle. */
+/** State for the icon, derived from session status + sidecar presence + liveness.
+ *  Priority: dead > error > plan-approval > permission-prompt > subagent > working > idle.
+ *  An errored session may already be back to idle by the time we see the file,
+ *  so error wins regardless of busy/idle. */
 export function deriveState(s: SessionInfo, alive: boolean): SessionState {
   if (!alive) return "finished";
+  if (s.errored) return "error";
   if (s.rawStatus === "idle" && s.awaitingPlan) return "awaiting_plan";
   if (s.rawStatus === "idle" && s.awaiting) return "awaiting";
+  if (s.rawStatus === "busy" && s.subagentActive) return "subagent";
   if (s.rawStatus === "busy") return "working";
   return "idle";
 }

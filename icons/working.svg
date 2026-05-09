@@ -1,5 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">
 <rect width="144" height="144" fill="#0f1115"/>
+
 <rect x="5" y="5" width="134" height="134" rx="20" fill="none" stroke="#fbbf24" stroke-width="5" stroke-linejoin="round" opacity="0.95"/>
 <text x="128" y="22" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="10" font-weight="700" fill="#fbbf24" opacity="0.8" text-anchor="end">1</text>
 <text x="72" y="30" font-family="-apple-system,Segoe UI,Roboto,sans-serif" font-size="19" font-weight="700" fill="#fbbf24" text-anchor="middle">streamdeck</text>

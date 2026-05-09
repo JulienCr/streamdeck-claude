@@ -12,6 +12,13 @@ import {
 } from "./theme.js";
 import { approxWidth, splitLabel, textLine, xmlEscape } from "./text.js";
 import { STATES, type SessionState } from "./states.js";
+import { ANIMATION_FRAMES } from "./motifs.js";
+
+/** Peak opacity of the accent-on-bg overlay used by `pulseBg` states. */
+const PULSE_BG_PEAK = 0.75;
+/** How many bg-pulse cycles fit into one motif period. >1 makes the tile flash
+ *  faster than the motif beats — reads as "urgent / hurry up". */
+const PULSE_BG_SPEED = 2;
 
 export interface IconOptions {
   state: SessionState;
@@ -70,8 +77,19 @@ export function renderIcon({ state, slot, label, frame = 0, now }: IconOptions):
     ? ""
     : `<text x="128" y="22" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="10" font-weight="700" fill="${accent}" opacity="0.8" text-anchor="end">${xmlEscape(slotText)}</text>`;
 
+  let pulseOverlay = "";
+  if (STATES[state].pulseBg) {
+    // Same triangle wave the motifs use (motifs.ts), but ticked PULSE_BG_SPEED×
+    // faster so the tile flashes urgently while the motif keeps its calmer beat.
+    const phase = ((frame * PULSE_BG_SPEED) % ANIMATION_FRAMES) / ANIMATION_FRAMES;
+    const tri = phase < 0.5 ? phase * 2 : (1 - phase) * 2;
+    const opacity = (tri * PULSE_BG_PEAK).toFixed(3);
+    pulseOverlay = `<rect width="144" height="144" fill="${accent}" opacity="${opacity}"/>`;
+  }
+
   return `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">
 <rect width="144" height="144" fill="${bg}"/>
+${pulseOverlay}
 <rect x="${BORDER_INSET}" y="${BORDER_INSET}" width="${BORDER_SIZE}" height="${BORDER_SIZE}" rx="${BORDER_RADIUS}" fill="none" stroke="${accent}" stroke-width="${BORDER_STROKE}" stroke-linejoin="round" opacity="${isEmpty ? "0.45" : "0.95"}"/>
 ${slotBadge}
 ${topLine}

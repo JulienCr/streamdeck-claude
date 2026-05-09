@@ -1,8 +1,9 @@
 # Claude Code hook bridge for the streamdeck-claude plugin (Windows side).
 # Mirrors hooks/notification.sh — same script handles every event listed in
-# the sibling hooks/events.json file (rules are evaluated top-to-bottom;
-# first match wins). Each rule routes a hook event (and optional tool_name)
-# to either:
+# the sibling hooks/events.json file. Every rule whose event (and optional
+# tool_name) matches the incoming hook fires, in declaration order, so one
+# event can target multiple sidecar files (e.g. SessionEnd cleans up
+# notify/plan/error/subagent in one pass). Each rule routes to either:
 #   - drop  <sessionId>.<file>.json (awaiting flag, with reason+mtime)
 #   - rm    <sessionId>.<file>.json (clear flag)
 #
@@ -47,27 +48,31 @@ try {
     Write-Output '{}'; exit
 }
 
-# Find the first rule whose event matches and (if specified) tool_name matches.
-$rule = $rules | Where-Object {
+# Collect every rule whose event matches and (if specified) tool_name matches.
+# We run *all* matching rules so one event can target multiple sidecars.
+$ruleMatches = @($rules | Where-Object {
     $_.event -eq $event -and (-not $_.tool_name -or $_.tool_name -eq $toolName)
-} | Select-Object -First 1
+})
 
-if (-not $rule) { Write-Output '{}'; exit }
+if ($ruleMatches.Count -eq 0) { Write-Output '{}'; exit }
 
 $sessionsDir = Join-Path $env:USERPROFILE '.claude\sessions'
 if (-not (Test-Path $sessionsDir)) {
     New-Item -ItemType Directory -Force -Path $sessionsDir | Out-Null
 }
-$target = Join-Path $sessionsDir ("{0}.{1}.json" -f $sessionId, $rule.file)
 
-switch ($rule.action) {
-    'drop' {
-        $tsMs = [int64]([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())
-        $json = @{ sessionId = $sessionId; reason = $rule.reason; mtime = $tsMs } | ConvertTo-Json -Compress
-        [System.IO.File]::WriteAllText($target, $json)
-    }
-    'rm' {
-        if (Test-Path $target) { Remove-Item -Force $target }
+$tsMs = [int64]([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())
+
+foreach ($rule in $ruleMatches) {
+    $target = Join-Path $sessionsDir ("{0}.{1}.json" -f $sessionId, $rule.file)
+    switch ($rule.action) {
+        'drop' {
+            $json = @{ sessionId = $sessionId; reason = $rule.reason; mtime = $tsMs } | ConvertTo-Json -Compress
+            [System.IO.File]::WriteAllText($target, $json)
+        }
+        'rm' {
+            if (Test-Path $target) { Remove-Item -Force $target }
+        }
     }
 }
 

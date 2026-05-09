@@ -25,11 +25,13 @@ const FROZEN_NOW = 0;
 
 const SAMPLES = [
   { state: "working",       slot: 1, label: "streamdeck-claude-sessions", frame: 3, now: FROZEN_NOW },
-  { state: "idle",          slot: 2, label: "wolfgangparis",              frame: 0, now: FROZEN_NOW },
-  { state: "awaiting",      slot: 3, label: "ascory-website",             frame: 6, now: FROZEN_NOW },
-  { state: "awaiting_plan", slot: 4, label: "publish-streamdeck-claude",  frame: 6, now: FROZEN_NOW },
-  { state: "finished",      slot: 5, label: "loadtestvideo",              frame: 0, now: FROZEN_NOW },
-  { state: "empty",         slot: 5, label: "",                           frame: 0, now: FROZEN_NOW },
+  { state: "subagent",      slot: 2, label: "delegated-research",         frame: 3, now: FROZEN_NOW },
+  { state: "idle",          slot: 3, label: "wolfgangparis",              frame: 0, now: FROZEN_NOW },
+  { state: "awaiting",      slot: 4, label: "ascory-website",             frame: 6, now: FROZEN_NOW },
+  { state: "awaiting_plan", slot: 5, label: "publish-streamdeck-claude",  frame: 6, now: FROZEN_NOW },
+  { state: "error",         slot: 1, label: "rate-limited-turn",          frame: 6, now: FROZEN_NOW },
+  { state: "finished",      slot: 2, label: "loadtestvideo",              frame: 0, now: FROZEN_NOW },
+  { state: "empty",         slot: 3, label: "",                           frame: 0, now: FROZEN_NOW },
   // Bonus: a long single segment that triggers the marquee on the top line.
   { state: "working",       slot: 1, label: "very-long-singleword-that-overflows", frame: 0, now: FROZEN_NOW },
 ];

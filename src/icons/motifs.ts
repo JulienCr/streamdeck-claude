@@ -60,3 +60,40 @@ export function emptyDashed(_frame: number, color: string): string {
   return `<rect x="22" y="34" width="100" height="56" rx="9" fill="none" stroke="${color}" stroke-width="2" stroke-dasharray="4 4"/>
 <path d="M72 46 L72 78 M56 62 L88 62" stroke="${color}" stroke-width="4.5" stroke-linecap="round"/>`;
 }
+
+export function errorBolt(frame: number, color: string): string {
+  // Warning triangle with `!` glyph, pulsing in time with awaitingPulse so the
+  // family relationship reads as "needs attention" — but the red palette in
+  // states.ts makes the urgency unmistakable.
+  const phase = frame / ANIMATION_FRAMES;
+  const t = phase < 0.5 ? phase * 2 : (1 - phase) * 2;
+  const opacity = 0.6 + t * 0.4;
+  const stroke = (4 + t * 1.5).toFixed(1);
+  return `<path d="M72 32 L100 82 a4 4 0 0 1 -3.5 6 H47.5 a4 4 0 0 1 -3.5 -6 Z" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-linejoin="round" opacity="${opacity.toFixed(2)}"/>
+<rect x="69" y="50" width="6" height="18" rx="2.5" fill="${color}"/>
+<circle cx="72" cy="76" r="3.2" fill="${color}"/>`;
+}
+
+export function subagentBranch(frame: number, color: string): string {
+  // A spinner arc + an orbiting satellite — visually rhymes with `spinnerArc`
+  // (same core spin) but the satellite reads as "delegated work running in
+  // parallel". Used while a Task tool / subagent is active.
+  const cx = 72, cy = 60;
+  const mainR = 18;
+  const mainStartDeg = (frame * 360) / ANIMATION_FRAMES;
+  const mainSweep = 220;
+  const mainEndDeg = mainStartDeg + mainSweep;
+  const toXY = (r: number, deg: number) => {
+    const rad = ((deg - 90) * Math.PI) / 180;
+    return [cx + r * Math.cos(rad), cy + r * Math.sin(rad)] as const;
+  };
+  const [mx1, my1] = toXY(mainR, mainStartDeg);
+  const [mx2, my2] = toXY(mainR, mainEndDeg);
+  const mainLargeArc = mainSweep > 180 ? 1 : 0;
+  // Satellite spins twice as fast, opposite direction.
+  const satDeg = -(frame * 720) / ANIMATION_FRAMES;
+  const orbitR = 30;
+  const [sx, sy] = toXY(orbitR, satDeg);
+  return `<path d="M ${mx1.toFixed(2)} ${my1.toFixed(2)} A ${mainR} ${mainR} 0 ${mainLargeArc} 1 ${mx2.toFixed(2)} ${my2.toFixed(2)}" fill="none" stroke="${color}" stroke-width="5" stroke-linecap="round"/>
+<circle cx="${sx.toFixed(2)}" cy="${sy.toFixed(2)}" r="5" fill="${color}"/>`;
+}

@@ -5,22 +5,36 @@ A Stream Deck plugin that mirrors the live state of your running Claude Code CLI
 | State | Color | Meaning |
 |---|---|---|
 | working | amber | Claude is generating / running tools |
+| subagent | amber (orbit) | Claude has delegated to a subagent (the parent is waiting) |
 | idle | blue | Claude is waiting for your next prompt |
 | awaiting | orange (pulsing) | Claude has popped a permission prompt — your turn |
 | awaiting_plan | violet (pulsing) | Claude has called `ExitPlanMode` and is waiting for plan approval |
+| error | red (pulsing) | The last turn ended in failure (rate limit / auth / server error) |
 | finished | green | The session just ended (visible for ~3 s, then drops) |
 | empty | dim | No session in this slot |
 
 Pressing a key copies the session's project path (`cwd`) to the clipboard.
 
-Reference SVGs of the five states live in [`icons/`](./icons).
+Reference SVGs for every state live in [`icons/`](./icons).
 
 ## How it works
 
 - Claude Code writes one JSON file per running CLI session under `~/.claude/sessions/<pid>.json`.
 - The plugin polls that directory once per second, batches a `kill -0 <pid>` check (over `wsl.exe -d Ubuntu` on Windows hosts) to filter out stale files, sorts the live sessions by `startedAt`, and renders an SVG per slot via `setImage`.
-- The "awaiting permission" state is fed by a Claude Code `Notification` hook that drops `~/.claude/sessions/<sessionId>.notify.json` whenever Claude needs the user's attention. The plugin treats `status=idle` + recent (<60 s mtime) notify file as `awaiting`.
-- The "awaiting plan approval" state is fed by `PreToolUse` and `PostToolUse` hooks scoped to the `ExitPlanMode` tool. The pre-hook drops `<sessionId>.plan.json`, the post-hook removes it. While the file exists and the session is idle, the slot shows the violet pulsing "plan" icon.
+- Hook-driven sidecars under `~/.claude/sessions/<sessionId>.<flag>.json` carry the rest of the state. The dispatch table is `hooks/events.json` (read by both `notification.sh` and `notification.ps1`), every matching rule fires:
+
+| Hook event | Sidecar | TTL | Drives |
+|---|---|---|---|
+| `Notification` | `notify` (drop) | 60 s | `awaiting` |
+| `Stop` | `notify` (rm) | – | clears `awaiting` early |
+| `PreToolUse[ExitPlanMode]` | `plan` (drop) | 30 min | `awaiting_plan` |
+| `PostToolUse[ExitPlanMode]` | `plan` (rm) | – | clears `awaiting_plan` |
+| `StopFailure` | `error` (drop) | 60 s | `error` |
+| `SubagentStart` | `subagent` (drop) | 30 min | `subagent` |
+| `SubagentStop` | `subagent` (rm) | – | clears `subagent` |
+| `SessionEnd` | sweep all sidecars | – | safety-net cleanup on Ctrl-C / crash |
+
+  TTLs are safety nets — the explicit `rm` rules clear flags as soon as the matching event fires.
 
 ## Setup (one-time)
 
@@ -40,7 +54,7 @@ The two `install:hook` scripts are idempotent — re-run any time. They install:
 - **WSL**: a Bash hook (`hooks/notification.sh`) referenced by an absolute WSL path.
 - **Windows**: a PowerShell hook command pointing at `hooks/notification.ps1` over the `\\wsl.localhost\<distro>\…` UNC path. **No copy** — both bash and PowerShell sides read the same `hooks/events.json` from the repo, so editing it once propagates to both.
 
-Both hooks behave identically: they read the Notification event from stdin, extract `session_id`, and drop `<sessionId>.notify.json` next to that side's session JSON files. The plugin reads both directories and treats a fresh notify file (mtime <60 s) on an idle session as the orange "awaiting" state.
+Both hooks behave identically: they read the hook payload from stdin, extract `session_id` + `hook_event_name`, look up the matching rules in `hooks/events.json`, and drop or remove the corresponding `<sessionId>.<flag>.json` next to that side's session JSON files. The plugin reads both directories and renders the appropriate state based on which sidecars are present (and still within their TTL).
 
 `pnpm sd:link` shells through `cmd.exe` to run a real Windows `mklink /D`, with the symlink target as `\\wsl.localhost\Ubuntu\home\julien\dev\streamdeck-claude\com.julien.claudesessions.sdPlugin`. We don't use `streamdeck link` directly because it creates a Linux-style symlink (target = `/home/...`) which the Windows-side Stream Deck app can't follow.
 
