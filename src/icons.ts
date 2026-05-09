@@ -1,14 +1,3 @@
-export type SessionState = "working" | "idle" | "awaiting" | "awaiting_plan" | "finished" | "empty";
-
-const PALETTE: Record<SessionState, { bg: string; accent: string; label: string }> = {
-  working:       { bg: "#0f1115", accent: "#fbbf24", label: "#fde68a" }, // amber, animated
-  idle:          { bg: "#0f1115", accent: "#3b82f6", label: "#bfdbfe" }, // blue
-  awaiting:      { bg: "#1a1208", accent: "#f97316", label: "#fed7aa" }, // orange, pulsing — permission
-  awaiting_plan: { bg: "#15102a", accent: "#a78bfa", label: "#ddd6fe" }, // violet, pulsing — plan approval
-  finished:      { bg: "#0a1410", accent: "#22c55e", label: "#bbf7d0" }, // green check
-  empty:         { bg: "#0a0b0e", accent: "#374151", label: "#4b5563" },
-};
-
 const ESC: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 const xmlEscape = (s: string) => s.replace(/[&<>"']/g, (c) => ESC[c]);
 
@@ -137,26 +126,42 @@ function planPulse(frame: number, color: string): string {
 <line x1="58" y1="76" x2="76" y2="76" stroke="${color}" stroke-width="3" stroke-linecap="round" opacity="0.5"/>`;
 }
 
-function motif(state: SessionState, color: string, frame: number): string {
-  switch (state) {
-    case "working":
-      return spinnerArc(frame, color);
-    case "idle":
-      return `<path d="M72 32 L72 70 M56 54 L72 72 L88 54" fill="none" stroke="${color}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+function idleArrow(_frame: number, color: string): string {
+  return `<path d="M72 32 L72 70 M56 54 L72 72 L88 54" fill="none" stroke="${color}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
 <rect x="46" y="80" width="52" height="5" rx="2.5" fill="${color}"/>`;
-    case "awaiting":
-      return awaitingPulse(frame, color);
-    case "awaiting_plan":
-      return planPulse(frame, color);
-    case "finished":
-      return `<circle cx="72" cy="60" r="28" fill="${color}" opacity="0.18"/>
+}
+
+function finishedCheck(_frame: number, color: string): string {
+  return `<circle cx="72" cy="60" r="28" fill="${color}" opacity="0.18"/>
 <circle cx="72" cy="60" r="28" fill="none" stroke="${color}" stroke-width="3.5" opacity="0.85"/>
 <path d="M58 61 L68 71 L88 51" fill="none" stroke="${color}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>`;
-    case "empty":
-      return `<rect x="22" y="34" width="100" height="56" rx="9" fill="none" stroke="${color}" stroke-width="2" stroke-dasharray="4 4"/>
-<path d="M72 46 L72 78 M56 62 L88 62" stroke="${color}" stroke-width="4.5" stroke-linecap="round"/>`;
-  }
 }
+
+function emptyDashed(_frame: number, color: string): string {
+  return `<rect x="22" y="34" width="100" height="56" rx="9" fill="none" stroke="${color}" stroke-width="2" stroke-dasharray="4 4"/>
+<path d="M72 46 L72 78 M56 62 L88 62" stroke="${color}" stroke-width="4.5" stroke-linecap="round"/>`;
+}
+
+type Palette = { bg: string; accent: string; label: string };
+type MotifFn = (frame: number, color: string) => string;
+
+interface StateDef {
+  palette: Palette;
+  /** True if the motif itself uses `frame` (independent of marquee on labels). */
+  animated: boolean;
+  motif: MotifFn;
+}
+
+export const STATES = {
+  working:       { palette: { bg: "#0f1115", accent: "#fbbf24", label: "#fde68a" }, animated: true,  motif: spinnerArc },
+  idle:          { palette: { bg: "#0f1115", accent: "#3b82f6", label: "#bfdbfe" }, animated: false, motif: idleArrow },
+  awaiting:      { palette: { bg: "#1a1208", accent: "#f97316", label: "#fed7aa" }, animated: true,  motif: awaitingPulse },
+  awaiting_plan: { palette: { bg: "#15102a", accent: "#a78bfa", label: "#ddd6fe" }, animated: true,  motif: planPulse },
+  finished:      { palette: { bg: "#0a1410", accent: "#22c55e", label: "#bbf7d0" }, animated: false, motif: finishedCheck },
+  empty:         { palette: { bg: "#0a0b0e", accent: "#374151", label: "#4b5563" }, animated: false, motif: emptyDashed },
+} satisfies Record<string, StateDef>;
+
+export type SessionState = keyof typeof STATES;
 
 export interface IconOptions {
   state: SessionState;
@@ -170,7 +175,7 @@ export interface IconOptions {
 
 export function renderIcon({ state, slot, label, frame = 0, now }: IconOptions): string {
   const t = now ?? Date.now();
-  const { bg, accent, label: labelColor } = PALETTE[state];
+  const { bg, accent, label: labelColor } = STATES[state].palette;
   const slotText = state === "empty" ? "" : String(slot);
   const isEmpty = state === "empty";
   const { top, line1, line2 } = isEmpty
@@ -220,7 +225,7 @@ export function renderIcon({ state, slot, label, frame = 0, now }: IconOptions):
 <rect x="${BORDER_INSET}" y="${BORDER_INSET}" width="${BORDER_SIZE}" height="${BORDER_SIZE}" rx="${BORDER_RADIUS}" fill="none" stroke="${accent}" stroke-width="${BORDER_STROKE}" stroke-linejoin="round" opacity="${isEmpty ? "0.45" : "0.95"}"/>
 ${slotBadge}
 ${topLine}
-<g>${motif(state, accent, frame)}</g>
+<g>${STATES[state].motif(frame, accent)}</g>
 ${line1Svg}
 ${line2Svg}
 </svg>`;
@@ -228,7 +233,7 @@ ${line2Svg}
 
 /** True when the icon's visual depends on `frame` or `now` and must be re-rendered often. */
 export function iconNeedsAnimation(state: SessionState, label: string): boolean {
-  if (state === "working" || state === "awaiting" || state === "awaiting_plan") return true;
+  if (STATES[state].animated) return true;
   // Marquee may apply to label even on static states.
   const { top, line1, line2 } = state === "empty" ? { top: "free slot", line1: "", line2: "" } : splitLabel(label);
   if (approxWidth(top, TOP_FONT) > VIEWPORT_W) return true;
@@ -238,5 +243,4 @@ export function iconNeedsAnimation(state: SessionState, label: string): boolean 
 }
 
 /** True when the icon's motif uses `frame` (independent of marquee). */
-export const isAnimated = (s: SessionState) =>
-  s === "working" || s === "awaiting" || s === "awaiting_plan";
+export const isAnimated = (s: SessionState) => STATES[s].animated;
