@@ -36,10 +36,14 @@ export async function renderAll(
     if (!slotState) continue;
     if (slotState.lastSvg === dataUrl) {
       slotState.clipboardPayload = entry?.session.cwd;
+      slotState.sessionId = entry?.session.sessionId;
+      slotState.origin = entry?.session.origin;
       continue;
     }
     slotState.lastSvg = dataUrl;
     slotState.clipboardPayload = entry?.session.cwd;
+    slotState.sessionId = entry?.session.sessionId;
+    slotState.origin = entry?.session.origin;
     try {
       await action.setImage(dataUrl);
     } catch (err) {

@@ -132,6 +132,24 @@ export async function readAllSessions(): Promise<SessionInfo[]> {
   return results.flat();
 }
 
+/** Unlinks one `<sid>.events.ndjson` from the source dir matching `origin`.
+ *  Idempotent (ENOENT counts as success) so a long-press reset on a slot whose
+ *  agent hasn't emitted anything yet still feels like it "worked". */
+export async function wipeSessionEventLog(
+  sessionId: string,
+  origin: SessionOrigin,
+): Promise<{ wiped: boolean; error?: string }> {
+  const src = SESSION_SOURCES.find((s) => s.origin === origin);
+  if (!src) return { wiped: false, error: `no source for origin=${origin}` };
+  try {
+    await unlink(join(src.path, `${sessionId}.events.ndjson`));
+    return { wiped: true };
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException)?.code === "ENOENT") return { wiped: true };
+    return { wiped: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 /** Unlinks every `<sid>.events.ndjson` across all configured source dirs.
  *  Safe to call any time: hooks just recreate the files on the next event.
  *  Used by the Setup action to force every slot back to a clean idle state. */

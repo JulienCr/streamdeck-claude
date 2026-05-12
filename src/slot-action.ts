@@ -1,6 +1,7 @@
 import streamDeck, {
   action,
   KeyDownEvent,
+  KeyUpEvent,
   SingletonAction,
   WillAppearEvent,
   WillDisappearEvent,
@@ -8,14 +9,22 @@ import streamDeck, {
 } from "@elgato/streamdeck";
 import { spawn } from "node:child_process";
 import { platform } from "node:os";
+import type { SessionOrigin } from "./sessions.js";
 import { pickBestPane, readWarpPanes } from "./warp-db.js";
+
+/** Hold a slot key for at least this long to trigger the per-session reset
+ *  instead of the default clipboard-copy short press. */
+const LONG_PRESS_MS = 500;
 
 /** Per-instance state we render onto each key. */
 export interface SlotState {
   /** SVG already rendered last tick — used to skip redundant setImage calls. */
   lastSvg?: string;
-  /** What we copy to the clipboard when the key is pressed. */
+  /** What we copy to the clipboard when the key is short-pressed. */
   clipboardPayload?: string;
+  /** Bound session — used by long-press to wipe just this agent's event log. */
+  sessionId?: string;
+  origin?: SessionOrigin;
 }
 
 @action({ UUID: "com.julien.claudesessions.slot" })
@@ -24,6 +33,15 @@ export class SlotAction extends SingletonAction {
   private readonly instances = new Map<string, KeyAction>();
   /** Per-instance render bookkeeping. */
   private readonly state = new Map<string, SlotState>();
+  /** Armed long-press timers. Presence = key is currently held but threshold
+   *  not yet reached. Cleared on KeyUp (short press) or when the timer fires. */
+  private readonly pressTimers = new Map<string, NodeJS.Timeout>();
+
+  constructor(
+    private readonly resetSlot: (sessionId: string, origin: SessionOrigin) => Promise<void>,
+  ) {
+    super();
+  }
 
   override onWillAppear(ev: WillAppearEvent): void | Promise<void> {
     if (!ev.action.isKey()) {
@@ -41,16 +59,46 @@ export class SlotAction extends SingletonAction {
   override onWillDisappear(ev: WillDisappearEvent): void | Promise<void> {
     this.instances.delete(ev.action.id);
     this.state.delete(ev.action.id);
+    const t = this.pressTimers.get(ev.action.id);
+    if (t) {
+      clearTimeout(t);
+      this.pressTimers.delete(ev.action.id);
+    }
     streamDeck.logger.info(`willDisappear: id=${ev.action.id} total=${this.instances.size}`);
   }
 
-  override async onKeyDown(ev: KeyDownEvent): Promise<void> {
+  override onKeyDown(ev: KeyDownEvent): void {
     const slot = this.state.get(ev.action.id);
-    if (!slot?.clipboardPayload) {
+    if (!slot?.clipboardPayload || !slot.sessionId || !slot.origin) {
+      // Empty slot — keep the existing "nothing to do here" feedback. No timer
+      // armed, so KeyUp will also be a no-op.
+      void ev.action.showAlert();
+      return;
+    }
+    const sessionId = slot.sessionId;
+    const origin = slot.origin;
+    const timer = setTimeout(() => {
+      this.pressTimers.delete(ev.action.id);
+      void this.runLongPress(ev, sessionId, origin);
+    }, LONG_PRESS_MS);
+    this.pressTimers.set(ev.action.id, timer);
+  }
+
+  override async onKeyUp(ev: KeyUpEvent): Promise<void> {
+    const timer = this.pressTimers.get(ev.action.id);
+    if (!timer) return; // long-press already fired, or empty slot
+    clearTimeout(timer);
+    this.pressTimers.delete(ev.action.id);
+    await this.runShortPress(ev);
+  }
+
+  private async runShortPress(ev: KeyUpEvent): Promise<void> {
+    const slot = this.state.get(ev.action.id);
+    const cwd = slot?.clipboardPayload;
+    if (!cwd) {
       await ev.action.showAlert();
       return;
     }
-    const cwd = slot.clipboardPayload;
     try {
       await copyToClipboard(cwd);
       if (platform() === "darwin") {
@@ -60,6 +108,20 @@ export class SlotAction extends SingletonAction {
       await ev.action.showOk();
     } catch (err) {
       streamDeck.logger.error("clipboard copy failed", err);
+      await ev.action.showAlert();
+    }
+  }
+
+  private async runLongPress(
+    ev: KeyDownEvent,
+    sessionId: string,
+    origin: SessionOrigin,
+  ): Promise<void> {
+    try {
+      await this.resetSlot(sessionId, origin);
+      await ev.action.showOk();
+    } catch (err) {
+      streamDeck.logger.error(`long-press reset failed for ${origin}/${sessionId}`, err);
       await ev.action.showAlert();
     }
   }
