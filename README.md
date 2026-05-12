@@ -54,6 +54,8 @@ pnpm sd:validate
 
 No `mklink`, no Developer Mode, no UNC — the macOS branch of each script just uses native `ln -s` and writes the hook directly to `~/.claude/settings.json`.
 
+**Warp tab focus (optional):** pressing a slot copies the session's `cwd` to the clipboard and, on macOS, also tries to focus the matching Warp tab. Warp exposes no public focus API (URL scheme, AppleScript, CLI — all confirmed missing; its AX tree is empty too), so the plugin reads Warp's local SQLite DB (`~/Library/Group Containers/2BBY89MBSN.dev.warp/…/warp.sqlite`, read-only) to map `cwd → (window, tab_index)`, scores by exact match > prefix > token overlap on path components, then sends `Cmd+<digit>` (tabs 1-9) or `Cmd+Option+→/←` cycling (tabs 10+) via System Events. On first click, macOS prompts to allow **Stream Deck** under *System Settings → Privacy & Security → Accessibility*. If you decline, the clipboard copy still works; only the focus attempt is silently skipped.
+
 ### WSL + Windows
 
 Extra prereq: Windows Developer Mode enabled (lets `mklink /D` work without admin).
