@@ -1,9 +1,9 @@
 import {
   awaitingPulse,
+  clawdIdleLook,
   emptyDashed,
   errorBolt,
   finishedCheck,
-  idleArrow,
   planPulse,
   spinnerArc,
   subagentBranch,
@@ -27,7 +27,7 @@ interface StateDef {
 export const STATES = {
   working:       { palette: { bg: "#0f1115", accent: "#fbbf24", label: "#fde68a" }, animated: true,  pulseBg: false, motif: spinnerArc },
   subagent:      { palette: { bg: "#0f1115", accent: "#fbbf24", label: "#fde68a" }, animated: true,  pulseBg: false, motif: subagentBranch },
-  idle:          { palette: { bg: "#0f1115", accent: "#3b82f6", label: "#bfdbfe" }, animated: false, pulseBg: false, motif: idleArrow },
+  idle:          { palette: { bg: "#0f1115", accent: "#3b82f6", label: "#bfdbfe" }, animated: true,  pulseBg: false, motif: clawdIdleLook },
   awaiting:      { palette: { bg: "#1a1208", accent: "#f97316", label: "#fed7aa" }, animated: true,  pulseBg: true,  motif: awaitingPulse },
   awaiting_plan: { palette: { bg: "#15102a", accent: "#a78bfa", label: "#ddd6fe" }, animated: true,  pulseBg: true,  motif: planPulse },
   error:         { palette: { bg: "#1a0a0a", accent: "#ef4444", label: "#fecaca" }, animated: true,  pulseBg: true,  motif: errorBolt },

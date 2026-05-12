@@ -45,9 +45,38 @@ export function planPulse(frame: number, color: string): string {
 <line x1="58" y1="76" x2="76" y2="76" stroke="${color}" stroke-width="3" stroke-linecap="round" opacity="0.5"/>`;
 }
 
-export function idleArrow(_frame: number, color: string): string {
-  return `<path d="M72 32 L72 70 M56 54 L72 72 L88 54" fill="none" stroke="${color}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
-<rect x="46" y="80" width="52" height="5" rx="2.5" fill="${color}"/>`;
+/** Clawd, the Claude Code mascot, derived from `assets/clawd/clawd-idle-look.svg`
+ *  (AGPL-3.0 — see assets/clawd/NOTICE.md). Two channels of life:
+ *    - breathe (scaleY 0.98..1 on the upper body, two beats per 12-frame loop)
+ *      — driven by `frame`, naturally fits the 1.44 s motif cycle.
+ *    - blink (~150 ms every 4 s) — driven by `Date.now()` because that cadence
+ *      doesn't divide our 12-frame counter; the 120 ms animation tick is fast
+ *      enough to catch the blink window and render-loop dedups between blinks.
+ *  `color` is unused — keeping Clawd's native peach preserves the character
+ *  while the idle palette drives chrome. */
+export function clawdIdleLook(frame: number, _color: string): string {
+  const breathePhase = ((frame * 2) % ANIMATION_FRAMES) / ANIMATION_FRAMES;
+  const breatheTri = breathePhase < 0.5 ? breathePhase * 2 : (1 - breathePhase) * 2;
+  const breatheY = (1 - 0.02 * breatheTri).toFixed(3);
+  const blinking = Date.now() % 4000 < 150;
+  const eyeScaleY = blinking ? "0.1" : "1";
+  const c = "#DE886D";
+  return `<g transform="translate(42 16) scale(4)">
+<rect x="3" y="15" width="9" height="1" fill="#000" opacity="0.45"/>
+<rect x="3" y="12" width="1" height="3" fill="${c}"/>
+<rect x="5" y="12" width="1" height="3" fill="${c}"/>
+<rect x="9" y="12" width="1" height="3" fill="${c}"/>
+<rect x="11" y="12" width="1" height="3" fill="${c}"/>
+<g transform="translate(7.5 13) scale(1 ${breatheY}) translate(-7.5 -13)">
+<rect x="2" y="6" width="11" height="7" fill="${c}"/>
+<rect x="0" y="9" width="2" height="2" fill="${c}"/>
+<rect x="13" y="9" width="2" height="2" fill="${c}"/>
+<g transform="translate(7.5 9) scale(1 ${eyeScaleY}) translate(-7.5 -9)">
+<rect x="4" y="8" width="1" height="2" fill="#000"/>
+<rect x="10" y="8" width="1" height="2" fill="#000"/>
+</g>
+</g>
+</g>`;
 }
 
 export function finishedCheck(_frame: number, color: string): string {
