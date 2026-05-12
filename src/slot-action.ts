@@ -78,20 +78,21 @@ export class SlotAction extends SingletonAction {
 }
 
 /**
- * Writes `text` to the host clipboard. On Windows we pipe to `clip.exe`.
- * On Linux we try `wl-copy`, then `xclip`, then `xsel` (best-effort).
+ * Writes `text` to the host clipboard. Windows pipes to `clip.exe`; macOS to
+ * `pbcopy`; Linux tries `wl-copy`, then `xclip`, then `xsel` (best-effort).
  */
 async function copyToClipboard(text: string): Promise<void> {
-  const isWin = platform() === "win32";
-  const candidates = isWin
-    ? [["clip.exe", []]]
+  const p = platform();
+  const candidates: [string, string[]][] =
+    p === "win32" ? [["clip.exe", []]]
+    : p === "darwin" ? [["pbcopy", []]]
     : [
         ["wl-copy", []],
         ["xclip", ["-selection", "clipboard"]],
         ["xsel", ["--clipboard", "--input"]],
       ];
 
-  for (const [cmd, args] of candidates as [string, string[]][]) {
+  for (const [cmd, args] of candidates) {
     const ok = await new Promise<boolean>((resolve) => {
       const child = spawn(cmd, args, { stdio: ["pipe", "ignore", "ignore"] });
       child.on("error", () => resolve(false));

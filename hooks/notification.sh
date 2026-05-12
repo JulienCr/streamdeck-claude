@@ -41,7 +41,9 @@ fi
 
 # jq -nc builds the JSON so embedded quotes/backslashes in tool names can't
 # corrupt the line. Atomic single-write append (line is well under PIPE_BUF).
-TS_MS="$(date +%s%3N)"
+# Perl (rather than `date +%s%3N`) because BSD date on macOS doesn't grok %N
+# and emits a literal "3N" suffix — perl is present on both macOS and Ubuntu.
+TS_MS="$(perl -MTime::HiRes -e 'printf "%d", Time::HiRes::time()*1000')"
 jq -nc \
   --argjson ts "$TS_MS" \
   --arg event "$EVENT" \
