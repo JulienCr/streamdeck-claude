@@ -95,7 +95,7 @@ export function createStateTracker() {
    * the render call when nothing would actually change.
    */
   function needsAnimation(): boolean {
-    return cachedEntries.some((e) => iconNeedsAnimation(e.state, e.session.label));
+    return cachedEntries.some((e) => iconNeedsAnimation(e.state, e.session.label, e.session.todos));
   }
 
   return { tick, getEntries, needsAnimation };

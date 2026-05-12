@@ -44,11 +44,24 @@ fi
 # Perl (rather than `date +%s%3N`) because BSD date on macOS doesn't grok %N
 # and emits a literal "3N" suffix — perl is present on both macOS and Ubuntu.
 TS_MS="$(perl -MTime::HiRes -e 'printf "%d", Time::HiRes::time()*1000')"
+
+# For TodoWrite we also snapshot the list's statuses so the plugin can draw a
+# progress column. Project tool_input.todos[*].status into a JSON array; on
+# any parse failure fall back to null (= don't emit the field).
+TODOS_JSON='null'
+if [ "$TOOL_NAME" = "TodoWrite" ]; then
+  TODOS_JSON="$(printf '%s' "$INPUT" | jq -c '[(.tool_input.todos // [])[] | .status]' 2>/dev/null || echo 'null')"
+  [ -z "$TODOS_JSON" ] && TODOS_JSON='null'
+fi
+
 jq -nc \
   --argjson ts "$TS_MS" \
   --arg event "$EVENT" \
   --arg tool "$TOOL_NAME" \
-  'if $tool == "" then {ts: $ts, event: $event} else {ts: $ts, event: $event, tool: $tool} end' \
+  --argjson todos "$TODOS_JSON" \
+  '{ts: $ts, event: $event}
+   | (if $tool  != ""   then . + {tool:  $tool}  else . end)
+   | (if $todos != null then . + {todos: $todos} else . end)' \
   >> "$TARGET"
 
 echo '{}'

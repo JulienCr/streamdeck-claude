@@ -147,6 +147,7 @@ merge "SessionStart"     ""
 merge "Notification"     ""
 merge "PreToolUse"       "ExitPlanMode"
 merge "PostToolUse"      "ExitPlanMode"
+merge "PostToolUse"      "TodoWrite"
 merge "Stop"             ""
 merge "StopFailure"      ""
 merge "UserPromptSubmit" ""
@@ -157,7 +158,7 @@ merge "SessionEnd"       ""
 # --- Final summary ---------------------------------------------------------
 echo "Hook command:"
 echo "  $HOOK_CMD"
-echo "Registered for: SessionStart, Notification, PreToolUse[ExitPlanMode], PostToolUse[ExitPlanMode], Stop, StopFailure, UserPromptSubmit, SubagentStart, SubagentStop, SessionEnd"
+echo "Registered for: SessionStart, Notification, PreToolUse[ExitPlanMode], PostToolUse[ExitPlanMode], PostToolUse[TodoWrite], Stop, StopFailure, UserPromptSubmit, SubagentStart, SubagentStop, SessionEnd"
 echo "Settings: $SETTINGS_PATH  (backup at $BACKUP)"
 if [ "$TARGET" = "windows" ]; then
   echo

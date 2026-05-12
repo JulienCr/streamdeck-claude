@@ -14,6 +14,7 @@ import {
 import { approxWidth, splitLabel, textLine, xmlEscape } from "./text.js";
 import { STATES, type SessionState } from "./states.js";
 import { ANIMATION_FRAMES } from "./motifs.js";
+import type { TodoStatus } from "../session-events.js";
 
 /** Peak opacity of the accent-on-bg overlay used by `pulseBg` states. */
 const PULSE_BG_PEAK = 0.75;
@@ -29,9 +30,49 @@ export interface IconOptions {
   frame?: number;
   /** Wall-clock ms; used for marquee. Defaults to Date.now() if omitted. */
   now?: number;
+  /** TodoWrite snapshot — renders a left-edge progress column when non-empty. */
+  todos?: TodoStatus[];
 }
 
-export function renderIcon({ state, slot, label, frame = 0, now }: IconOptions): string {
+// Left-edge progress column geometry. The column sits at x=2..7, outside the
+// VIEWPORT_X=10 text band, so it never overlaps marquee'd labels.
+const TODO_X = 2;
+const TODO_BAND_Y0 = 18;
+const TODO_BAND_Y1 = 130;
+const TODO_BAND_H = TODO_BAND_Y1 - TODO_BAND_Y0;
+const TODO_MAX_W = 5;
+const TODO_MIN_W = 2;
+const TODO_COLORS: Record<TodoStatus, string> = {
+  pending:     "#374151",
+  in_progress: "#fbbf24",
+  completed:   "#22c55e",
+};
+
+function renderTodoColumn(todos: readonly TodoStatus[], frame: number): string {
+  if (todos.length === 0) return "";
+  // Auto-shrink: pick the largest size that fits N stacked squares in BAND_H.
+  // stride = W + gap, with gap = max(1, floor(W/3)).
+  let w = TODO_MAX_W;
+  for (; w >= TODO_MIN_W; w--) {
+    const gap = Math.max(1, Math.floor(w / 3));
+    if (todos.length * (w + gap) - gap <= TODO_BAND_H) break;
+  }
+  const gap = Math.max(1, Math.floor(w / 3));
+  const stride = w + gap;
+  // In-progress pulse — same triangle wave as motifs/pulseBg so beats align.
+  const phase = (frame % ANIMATION_FRAMES) / ANIMATION_FRAMES;
+  const tri = phase < 0.5 ? phase * 2 : (1 - phase) * 2;
+  const pulseOpacity = (0.4 + tri * 0.6).toFixed(3);
+  const rects = todos.map((status, i) => {
+    const y = TODO_BAND_Y0 + i * stride;
+    const fill = TODO_COLORS[status];
+    const opacity = status === "in_progress" ? pulseOpacity : "1";
+    return `<rect x="${TODO_X}" y="${y}" width="${w}" height="${w}" fill="${fill}" opacity="${opacity}"/>`;
+  });
+  return rects.join("");
+}
+
+export function renderIcon({ state, slot, label, frame = 0, now, todos }: IconOptions): string {
   const t = now ?? Date.now();
   const { bg, accent, label: labelColor } = STATES[state].palette;
   const slotText = state === "empty" ? "" : String(slot);
@@ -91,6 +132,8 @@ export function renderIcon({ state, slot, label, frame = 0, now }: IconOptions):
     pulseOverlay = `<rect width="144" height="144" fill="${accent}" opacity="${opacity}"/>`;
   }
 
+  const todoColumn = todos && todos.length > 0 ? renderTodoColumn(todos, frame) : "";
+
   return `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">
 <rect width="144" height="144" fill="${bg}"/>
 ${pulseOverlay}
@@ -100,12 +143,14 @@ ${topLine}
 <g transform="translate(0,${MOTIF_DY})">${STATES[state].motif(frame, accent)}</g>
 ${line1Svg}
 ${line2Svg}
+${todoColumn}
 </svg>`;
 }
 
 /** True when the icon's visual depends on `frame` or `now` and must be re-rendered often. */
-export function iconNeedsAnimation(state: SessionState, label: string): boolean {
+export function iconNeedsAnimation(state: SessionState, label: string, todos?: readonly TodoStatus[]): boolean {
   if (STATES[state].animated) return true;
+  if (todos && todos.some((s) => s === "in_progress")) return true;
   // Marquee may apply to label even on static states.
   const { top, line1, line2 } = state === "empty" ? { top: "free slot", line1: "", line2: "" } : splitLabel(label);
   if (approxWidth(top, TOP_FONT) > VIEWPORT_W) return true;
