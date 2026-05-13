@@ -10,11 +10,12 @@ The `clawd-*.svg` files in this directory are mirrored from:
 The files are reproduced verbatim — no edits to the originals. Any code in this
 repo that renders Clawd (currently `src/icons/motifs.ts::clawdIdleLook`) is a
 derivative of these assets and is therefore also subject to AGPL-3.0 by
-extension; the rest of this repository remains private and unlicensed.
+extension. Everything else in this repository is licensed under MIT — see the
+top-level [`LICENSE`](../../../LICENSE).
 
-If this plugin is ever made public, the AGPL-3.0 obligations (provide source,
-keep license notice, no additional restrictions, network-use clause) must be
-respected for these files and any derivative renderers.
+The AGPL-3.0 obligations (provide source, keep license notice, no additional
+restrictions, network-use clause) apply to these files and to any derivative
+renderers listed above.
 
 A full copy of the AGPL-3.0 license text is available at
 https://www.gnu.org/licenses/agpl-3.0.txt
