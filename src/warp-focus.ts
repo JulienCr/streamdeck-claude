@@ -1,5 +1,6 @@
 import { platform } from "node:os";
 import { focusWarpTabOnMac } from "./warp-focus-mac.js";
+import { focusWarpTabOnWin } from "./warp-focus-win.js";
 
 /** Outcome of attempting to focus a Warp tab matching a session's cwd. */
 export interface WarpFocusResult {
@@ -16,6 +17,8 @@ export async function focusWarpTabForCwd(cwd: string): Promise<WarpFocusResult> 
   switch (platform()) {
     case "darwin":
       return focusWarpTabOnMac(cwd);
+    case "win32":
+      return focusWarpTabOnWin(cwd);
     default:
       return { matched: false, reason: "unsupported-platform" };
   }
