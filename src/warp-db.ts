@@ -231,8 +231,11 @@ export function pickBestPane(
       // form and a drive-aliased form pointing at the same WSL dir, or
       // the user genuinely has the same dir open in two tabs), we pick
       // the lowest (windowId, tabIndex) deterministically rather than
-      // refusing. Lower scores keep the strict tie-break — token overlap
-      // ties have no canonical winner.
+      // refusing. "Lowest" = oldest tab in the lowest-id window, since
+      // Warp orders tabs by monotonic id within each window — so re-opens
+      // of the same dir consistently land on the original tab. Lower
+      // scores keep the strict tie-break — token overlap ties have no
+      // canonical winner.
       if (s.score >= 1000) {
         const better =
           s.row.windowId < top.row.windowId ||

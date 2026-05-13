@@ -38,15 +38,11 @@ export async function focusWarpTabOnWin(cwd: string): Promise<WarpFocusResult> {
   const best = pickBestPane(cwd, db.snapshot.panes);
   if (!best) return { matched: false, reason: `no-match (rows=${db.snapshot.panes.length})` };
 
-  // Multi-window: same limitation as macOS. The first HWND that
-  // Get-Process returns wins; if it's the wrong window the user can
-  // raise the right one manually and re-press.
   const windowCount = new Set(db.snapshot.panes.map((r) => r.windowId)).size;
-  if (windowCount > 1) {
-    streamDeck.logger.info(`warp: ${windowCount} windows in DB — first HWND wins`);
-  }
 
   // Tabs 1..9 → Ctrl+VK_NUMPAD<n>. tabIndex is 0-based; VK_NUMPAD1 = 0x61.
+  // Absolute binding: lands on tab N regardless of which Warp window the
+  // OS raises, so multi-window setups are safe on this path.
   if (best.tabIndex <= 8) {
     const vk = 0x61 + best.tabIndex;
     const sent = await runPowerShell(buildScript({ kind: "single", vk }), 3000);
@@ -58,6 +54,17 @@ export async function focusWarpTabOnWin(cwd: string): Promise<WarpFocusResult> {
   }
 
   // Tabs 10+ → cycle via Ctrl+PageDown (next) / Ctrl+PageUp (prev).
+  // The cycle math uses best.windowId's active_tab_index but the keystroke
+  // lands in whichever Warp window the OS raised first. Single-window =
+  // guaranteed correct; multi-window = no way to map DB window_id → HWND,
+  // so the cycle may target the wrong window's tab strip. We proceed
+  // best-effort and flag it in the result so the caller's log carries the
+  // ambiguity (see issue: HWND ↔ window_id mapping).
+  if (windowCount > 1) {
+    streamDeck.logger.warn(
+      `warp: ${windowCount} windows in DB and tab>9 — cycle may target wrong window (DB target=${best.windowId})`,
+    );
+  }
   const active = db.snapshot.activeTabByWindow.get(best.windowId);
   const total = db.snapshot.tabCountByWindow.get(best.windowId);
   if (active === undefined || total === undefined || total <= 0) {
@@ -70,9 +77,10 @@ export async function focusWarpTabOnWin(cwd: string): Promise<WarpFocusResult> {
   const vk = direction === "next" ? 0x22 /* VK_NEXT  / PageDown */ : 0x21 /* VK_PRIOR / PageUp */;
   const sent = await runPowerShell(buildScript({ kind: "repeat", vk, steps }), 3000 + steps * 30);
   if (!sent.ok) return { matched: false, reason: `cycle-keystroke-failed: ${sent.error}` };
+  const ambiguity = windowCount > 1 ? " (multi-window: target unverified)" : "";
   return {
     matched: true,
-    reason: `cycle ${direction} x${steps} → window=${best.windowId} tab=${best.tabIndex} (from ${active}/${total}) pane="${best.paneCwd}" [${sent.out}]`,
+    reason: `cycle ${direction} x${steps} → window=${best.windowId} tab=${best.tabIndex} (from ${active}/${total})${ambiguity} pane="${best.paneCwd}" [${sent.out}]`,
   };
 }
 
