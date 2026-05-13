@@ -15,6 +15,7 @@ export async function renderAll(
   frame: number,
 ): Promise<void> {
   const ordered = slotAction.orderedActions();
+  const pending: Promise<void>[] = [];
   for (let i = 0; i < ordered.length; i++) {
     const action = ordered[i];
     const entry = entries[i];
@@ -34,20 +35,16 @@ export async function renderAll(
 
     const slotState = slotAction.getState(action.id);
     if (!slotState) continue;
-    if (slotState.lastSvg === dataUrl) {
-      slotState.clipboardPayload = entry?.session.cwd;
-      slotState.sessionId = entry?.session.sessionId;
-      slotState.origin = entry?.session.origin;
-      continue;
-    }
-    slotState.lastSvg = dataUrl;
     slotState.clipboardPayload = entry?.session.cwd;
     slotState.sessionId = entry?.session.sessionId;
     slotState.origin = entry?.session.origin;
-    try {
-      await action.setImage(dataUrl);
-    } catch (err) {
-      streamDeck.logger.error(`setImage failed for slot ${slotIndex}`, err);
-    }
+    if (slotState.lastSvg === dataUrl) continue;
+    slotState.lastSvg = dataUrl;
+    pending.push(
+      action.setImage(dataUrl).catch((err) => {
+        streamDeck.logger.error(`setImage failed for slot ${slotIndex}`, err);
+      }),
+    );
   }
+  await Promise.all(pending);
 }

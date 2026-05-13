@@ -7,10 +7,10 @@ import streamDeck, {
   WillDisappearEvent,
   type KeyAction,
 } from "@elgato/streamdeck";
-import { spawn } from "node:child_process";
 import { platform } from "node:os";
 import type { SessionOrigin } from "./sessions.js";
 import { focusWarpTabForCwd } from "./warp-focus.js";
+import { spawnCapture } from "./spawn-capture.js";
 
 /** Hold a slot key for at least this long to trigger the per-session reset
  *  instead of the default clipboard-copy short press. */
@@ -159,13 +159,8 @@ async function copyToClipboard(text: string): Promise<void> {
       ];
 
   for (const [cmd, args] of candidates) {
-    const ok = await new Promise<boolean>((resolve) => {
-      const child = spawn(cmd, args, { stdio: ["pipe", "ignore", "ignore"] });
-      child.on("error", () => resolve(false));
-      child.on("close", (code) => resolve(code === 0));
-      child.stdin.end(text);
-    });
-    if (ok) return;
+    const r = await spawnCapture(cmd, args, { stdin: text });
+    if (!r.err && r.code === 0) return;
   }
   throw new Error("no clipboard tool succeeded");
 }

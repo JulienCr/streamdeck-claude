@@ -1,7 +1,7 @@
 import streamDeck from "@elgato/streamdeck";
-import { spawn } from "node:child_process";
 import { pickBestPane, readWarpPanes } from "./warp-db.js";
 import type { WarpFocusResult } from "./warp-focus.js";
+import { spawnCapture } from "./spawn-capture.js";
 
 /**
  * Best-effort focus of the Warp tab corresponding to `cwd` on macOS.
@@ -73,17 +73,11 @@ function shortestCycle(
     : { direction: "prev", steps: backward };
 }
 
-function activateWarp(): Promise<{ ok: true } | { ok: false; error: string }> {
-  return new Promise((resolve) => {
-    const child = spawn("/usr/bin/open", ["-a", "Warp"], { stdio: ["ignore", "ignore", "pipe"] });
-    let stderr = "";
-    child.stderr.on("data", (b) => (stderr += b.toString()));
-    child.on("error", (err) => resolve({ ok: false, error: err.message }));
-    child.on("close", (code) => {
-      if (code === 0) resolve({ ok: true });
-      else resolve({ ok: false, error: stderr.trim() || `exit-${code}` });
-    });
-  });
+async function activateWarp(): Promise<{ ok: true } | { ok: false; error: string }> {
+  const r = await spawnCapture("/usr/bin/open", ["-a", "Warp"]);
+  if (r.err) return { ok: false, error: r.err };
+  if (r.code !== 0) return { ok: false, error: r.stderr.trim() || `exit-${r.code}` };
+  return { ok: true };
 }
 
 type KeystrokeSpec =
@@ -118,25 +112,10 @@ async function sendKeystrokeToWarp(spec: KeystrokeSpec): Promise<{ ok: true } | 
   return { ok: false, error: r.out };
 }
 
-function runOsa(script: string, timeoutMs: number): Promise<{ ok: true; out: string } | { ok: false; error: string }> {
-  return new Promise((resolve) => {
-    const child = spawn("/usr/bin/osascript", ["-e", script], { stdio: ["ignore", "pipe", "pipe"] });
-    let stdout = "";
-    let stderr = "";
-    const timer = setTimeout(() => {
-      child.kill("SIGTERM");
-      resolve({ ok: false, error: "timeout" });
-    }, timeoutMs);
-    child.stdout.on("data", (b) => (stdout += b.toString()));
-    child.stderr.on("data", (b) => (stderr += b.toString()));
-    child.on("error", (err) => {
-      clearTimeout(timer);
-      resolve({ ok: false, error: `spawn: ${err.message}` });
-    });
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      if (code === 0) return resolve({ ok: true, out: stdout.trim() });
-      resolve({ ok: false, error: stderr.trim() || `exit-${code}` });
-    });
-  });
+async function runOsa(script: string, timeoutMs: number): Promise<{ ok: true; out: string } | { ok: false; error: string }> {
+  const r = await spawnCapture("/usr/bin/osascript", ["-e", script], { timeoutMs });
+  if (r.timedOut) return { ok: false, error: "timeout" };
+  if (r.err) return { ok: false, error: `spawn: ${r.err}` };
+  if (r.code !== 0) return { ok: false, error: r.stderr.trim() || `exit-${r.code}` };
+  return { ok: true, out: r.stdout.trim() };
 }

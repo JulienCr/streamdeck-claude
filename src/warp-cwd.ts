@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawnCapture } from "./spawn-capture.js";
 
 /**
  * Translates Warp-stored cwds into a form comparable to `SessionInfo.cwd`.
@@ -17,6 +17,10 @@ import { spawn } from "node:child_process";
  * isn't WSL, …) is returned unchanged so the caller's scoring can still
  * exact-match Windows-origin sessions.
  */
+
+const RE_UNC = /^\\\\(?:wsl\$|wsl\.localhost)\\[^\\]+\\(.*)$/i;
+const RE_DRIVE = /^([A-Za-z]):\\(.*)$/;
+const RE_PS_DRIVE_LINE = /^([A-Za-z])=\s*(\\\\(?:wsl\$|wsl\.localhost)\\)/i;
 
 const wslDrives = new Set<string>();
 let initPromise: Promise<void> | null = null;
@@ -42,10 +46,10 @@ async function doInit(): Promise<void> {
 export function normalizeWarpCwd(raw: string): string {
   if (!raw || process.platform !== "win32") return raw;
 
-  const unc = /^\\\\(?:wsl\$|wsl\.localhost)\\[^\\]+\\(.*)$/i.exec(raw);
+  const unc = RE_UNC.exec(raw);
   if (unc) return "/" + unc[1].replace(/\\/g, "/");
 
-  const drive = /^([A-Za-z]):\\(.*)$/.exec(raw);
+  const drive = RE_DRIVE.exec(raw);
   if (drive && wslDrives.has(drive[1].toUpperCase())) {
     return "/" + drive[2].replace(/\\/g, "/");
   }
@@ -53,7 +57,7 @@ export function normalizeWarpCwd(raw: string): string {
   return raw;
 }
 
-function loadWslDriveLetters(): Promise<string[]> {
+async function loadWslDriveLetters(): Promise<string[]> {
   // Single-quote everything inside the PS string and use ForEach-Object
   // so we get one line per drive: `<LETTER>=<DISPLAY-ROOT>`.
   const ps =
@@ -61,33 +65,18 @@ function loadWslDriveLetters(): Promise<string[]> {
     "Where-Object { $_.DisplayRoot } | " +
     "ForEach-Object { \"$($_.Name)=$($_.DisplayRoot)\" }";
 
-  return new Promise((resolve, reject) => {
-    const child = spawn(
-      "powershell.exe",
-      ["-NoProfile", "-NonInteractive", "-Command", ps],
-      { stdio: ["ignore", "pipe", "pipe"] },
-    );
-    let stdout = "";
-    let stderr = "";
-    const timer = setTimeout(() => {
-      child.kill("SIGTERM");
-      reject(new Error("timeout"));
-    }, 3000);
-    child.stdout.on("data", (b) => (stdout += b.toString()));
-    child.stderr.on("data", (b) => (stderr += b.toString()));
-    child.on("error", (err) => {
-      clearTimeout(timer);
-      reject(err);
-    });
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      if (code !== 0) return reject(new Error(stderr.trim() || `exit-${code}`));
-      const letters: string[] = [];
-      for (const line of stdout.split(/\r?\n/)) {
-        const m = /^([A-Za-z])=\s*(\\\\(?:wsl\$|wsl\.localhost)\\)/i.exec(line.trim());
-        if (m) letters.push(m[1].toUpperCase());
-      }
-      resolve(letters);
-    });
-  });
+  const r = await spawnCapture(
+    "powershell.exe",
+    ["-NoProfile", "-NonInteractive", "-Command", ps],
+    { timeoutMs: 3000 },
+  );
+  if (r.err) throw new Error(r.err);
+  if (r.timedOut) throw new Error("timeout");
+  if (r.code !== 0) throw new Error(r.stderr.trim() || `exit-${r.code}`);
+  const letters: string[] = [];
+  for (const line of r.stdout.split(/\r?\n/)) {
+    const m = RE_PS_DRIVE_LINE.exec(line.trim());
+    if (m) letters.push(m[1].toUpperCase());
+  }
+  return letters;
 }

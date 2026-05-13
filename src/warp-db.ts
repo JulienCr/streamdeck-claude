@@ -1,8 +1,8 @@
-import { spawn } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { initWarpCwdNormalizer, normalizeWarpCwd } from "./warp-cwd.js";
+import { spawnCapture } from "./spawn-capture.js";
 
 /**
  * Warp stores per-pane cwd + per-tab/window structure in a sqlite DB under
@@ -44,9 +44,20 @@ function dbCandidates(): string[] {
  * name and let `spawn` resolve it via PATH — surfaces a clear `spawn` error
  * back to the caller if even that's missing.
  *
+ * Result is memoized: install path doesn't change at runtime, and probing
+ * (existsSync × ~5 + readdirSync) was happening on every key press.
+ *
  * Returns `null` only on platforms where neither path applies.
  */
+let cachedSqliteExec: string | null | undefined;
+
 function findSqliteExec(): string | null {
+  if (cachedSqliteExec !== undefined) return cachedSqliteExec;
+  cachedSqliteExec = resolveSqliteExec();
+  return cachedSqliteExec;
+}
+
+function resolveSqliteExec(): string | null {
   if (process.platform === "darwin" || process.platform === "linux") {
     return "/usr/bin/sqlite3";
   }
@@ -128,34 +139,15 @@ export async function readWarpPanes(): Promise<WarpDbResult> {
     "SELECT 'WINDOWS';" +
     "SELECT w.id, w.active_tab_index, (SELECT COUNT(*) FROM tabs WHERE window_id = w.id) FROM windows w;";
 
-  return new Promise((resolve) => {
-    const child = spawn(
-      exec,
-      ["-readonly", "-separator", "\t", db, sql],
-      { stdio: ["ignore", "pipe", "pipe"] },
-    );
-    let stdout = "";
-    let stderr = "";
-    const timer = setTimeout(() => {
-      child.kill("SIGTERM");
-      resolve({ ok: false, error: "timeout" });
-    }, 1500);
-    child.stdout.on("data", (b) => (stdout += b.toString()));
-    child.stderr.on("data", (b) => (stderr += b.toString()));
-    child.on("error", (err) => {
-      clearTimeout(timer);
-      resolve({ ok: false, error: `spawn: ${err.message}` });
-    });
-    child.on("close", async (code) => {
-      clearTimeout(timer);
-      if (code !== 0) return resolve({ ok: false, error: stderr.trim() || `exit-${code}` });
-      try {
-        resolve({ ok: true, snapshot: await parseSnapshot(stdout) });
-      } catch (err) {
-        resolve({ ok: false, error: `parse: ${(err as Error).message}` });
-      }
-    });
-  });
+  const r = await spawnCapture(exec, ["-readonly", "-separator", "\t", db, sql], { timeoutMs: 1500 });
+  if (r.timedOut) return { ok: false, error: "timeout" };
+  if (r.err) return { ok: false, error: `spawn: ${r.err}` };
+  if (r.code !== 0) return { ok: false, error: r.stderr.trim() || `exit-${r.code}` };
+  try {
+    return { ok: true, snapshot: await parseSnapshot(r.stdout) };
+  } catch (err) {
+    return { ok: false, error: `parse: ${(err as Error).message}` };
+  }
 }
 
 async function parseSnapshot(stdout: string): Promise<WarpSnapshot> {
