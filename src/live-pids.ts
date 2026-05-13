@@ -1,37 +1,25 @@
-import { spawn } from "node:child_process";
 import { platform } from "node:os";
 import type { SessionInfo, SessionOrigin } from "./sessions.js";
 import { WSL_DISTRO } from "./env.js";
+import { spawnCapture, type CaptureResult } from "./spawn-capture.js";
 
 /**
  * Returns the subset of sessions whose process is currently running.
  *
  * WSL sessions are checked via `wsl.exe -d <distro> -- kill -0`. Windows-native
- * sessions are checked via `tasklist.exe /FI "PID eq <n>"` — those PIDs live
- * in a different process namespace and aren't visible to WSL. Both checks run
- * in parallel.
+ * sessions are checked via `tasklist.exe /FO CSV` — those PIDs live in a
+ * different process namespace and aren't visible to WSL. Both checks run in
+ * parallel.
  *
- * Both spawn paths can be flaky on a busy host (cold-start latency or transient
- * empty output), so we cache the previous good answer per origin and reuse it
- * for up to CACHE_FALLBACK_MS to absorb hiccups without flickering all slots
- * to "finished".
+ * Spawn-level failures (ENOENT, timeout, …) are absorbed for CACHE_FALLBACK_MS
+ * using the previous good answer per origin, so a single flaky `wsl.exe` start
+ * doesn't flicker every slot to "finished". Cleanly-empty stdout is NOT a
+ * fallback trigger — for `kill -0` (per-PID echo) empty means all candidates
+ * are dead, and for `tasklist` empty essentially never happens in practice.
  */
 
-type SpawnResult = { stdout: string; stderr: string; code: number | null; err?: string };
-
-async function spawnCapture(cmd: string, args: string[]): Promise<SpawnResult> {
-  return new Promise((resolve) => {
-    const child = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"] });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (b) => (stdout += b.toString()));
-    child.stderr.on("data", (b) => (stderr += b.toString()));
-    child.on("error", (err) => resolve({ stdout, stderr, code: null, err: err.message }));
-    child.on("close", (code) => resolve({ stdout, stderr, code }));
-  });
-}
-
 interface OriginCache {
+  /** PIDs from the last successful tick, already intersected with the candidate list. */
   lastLive: Set<number>;
   lastLiveAt: number;
 }
@@ -59,13 +47,7 @@ async function checkWindowsLive(pids: number[]): Promise<{ live: Set<number>; er
   // multiple PIDs simultaneously), so we can't batch-filter. Cheaper to dump
   // every process once and intersect ourselves than to spawn N processes.
   const all = await spawnCapture("tasklist.exe", ["/NH", "/FO", "CSV"]);
-  const result = await parseAndCache("windows", all, pids, parsePidsFromCsv);
-  // parseAndCache stored *every* live windows pid in the cache; pare it down
-  // to the ones we were actually asked about so the cache stays small.
-  const filtered = new Set<number>();
-  const candidateSet = new Set(pids);
-  for (const p of result.live) if (candidateSet.has(p)) filtered.add(p);
-  return { ...result, live: filtered };
+  return parseAndCache("windows", all, pids, parsePidsFromCsv);
 }
 
 function parsePidsFromLines(stdout: string): Set<number> {
@@ -90,36 +72,34 @@ function parsePidsFromCsv(stdout: string): Set<number> {
   return out;
 }
 
+function intersect(parsed: Set<number>, candidates: Set<number>): Set<number> {
+  const out = new Set<number>();
+  for (const p of parsed) if (candidates.has(p)) out.add(p);
+  return out;
+}
+
 function parseAndCache(
   origin: SessionOrigin,
-  result: SpawnResult,
+  result: CaptureResult,
   candidates: number[],
   parser: (stdout: string) => Set<number>,
 ): { live: Set<number>; error?: string; fromCache: boolean } {
   const slot = cache[origin];
+  const candSet = new Set(candidates);
 
-  if (result.err) {
+  // Spawn-level flake: ENOENT, timeout, or anything that prevented the child
+  // from running cleanly. Fall back to the last good answer if recent enough.
+  const flake = result.err ?? (result.timedOut ? "timeout" : undefined);
+  if (flake) {
     if (Date.now() - slot.lastLiveAt < CACHE_FALLBACK_MS) {
-      return { live: slot.lastLive, fromCache: true, error: `${origin}: spawn ${result.err}` };
+      return { live: intersect(slot.lastLive, candSet), fromCache: true, error: `${origin}: spawn ${flake}` };
     }
-    return { live: new Set(), fromCache: false, error: `${origin}: spawn ${result.err}` };
+    return { live: new Set(), fromCache: false, error: `${origin}: spawn ${flake}` };
   }
 
-  const live = parser(result.stdout);
-  // Empty stdout on a non-empty candidate list is suspicious — bias toward the
-  // last good answer if it's recent.
-  if (live.size === 0 && slot.lastLive.size > 0 && Date.now() - slot.lastLiveAt < CACHE_FALLBACK_MS) {
-    const stillCandidates = new Set<number>();
-    for (const p of slot.lastLive) if (candidates.includes(p)) stillCandidates.add(p);
-    if (stillCandidates.size > 0) {
-      return {
-        live: stillCandidates,
-        fromCache: true,
-        error: `${origin}: empty stdout (code=${result.code} stderr=${result.stderr.trim().slice(0, 80)})`,
-      };
-    }
-  }
-
+  // Cache only the candidate intersection so the Windows path doesn't store
+  // every system PID and the WSL path stays bounded by session count.
+  const live = intersect(parser(result.stdout), candSet);
   slot.lastLive = live;
   slot.lastLiveAt = Date.now();
   return { live, fromCache: false };

@@ -1,7 +1,7 @@
 import streamDeck from "@elgato/streamdeck";
-import { spawn } from "node:child_process";
 import { pickBestPane, readWarpPanes } from "./warp-db.js";
 import type { WarpFocusResult } from "./warp-focus.js";
+import { spawnCapture } from "./spawn-capture.js";
 
 /**
  * Best-effort focus of the Warp tab corresponding to `cwd` on Windows.
@@ -183,7 +183,7 @@ public class W {
 '@
 }`;
 
-function runPowerShell(
+async function runPowerShell(
   script: string,
   timeoutMs: number,
 ): Promise<{ ok: true; out: string } | { ok: false; error: string }> {
@@ -199,35 +199,20 @@ function runPowerShell(
   const wrapped = "$ProgressPreference = 'SilentlyContinue'\n" + script;
   const encoded = Buffer.from(wrapped, "utf16le").toString("base64");
 
-  return new Promise((resolve) => {
-    const child = spawn(
-      "powershell.exe",
-      ["-NoProfile", "-NonInteractive", "-OutputFormat", "Text", "-EncodedCommand", encoded],
-      { stdio: ["ignore", "pipe", "pipe"] },
-    );
-    let stdout = "";
-    let stderr = "";
-    const timer = setTimeout(() => {
-      child.kill("SIGTERM");
-      resolve({ ok: false, error: "timeout" });
-    }, timeoutMs);
-    child.stdout.on("data", (b) => (stdout += b.toString()));
-    child.stderr.on("data", (b) => (stderr += b.toString()));
-    child.on("error", (err) => {
-      clearTimeout(timer);
-      resolve({ ok: false, error: `spawn: ${err.message}` });
-    });
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      const out = stdout.trim();
-      const err = stderr.trim();
-      if (code !== 0) return resolve({ ok: false, error: err || out || `exit-${code}` });
-      if (out.includes("ERROR:")) return resolve({ ok: false, error: out });
-      // Success line is `OK <trace…>` so we anchor at the start; the trace
-      // tail is preserved in `out` and forwarded into the focus-result
-      // reason for runtime visibility.
-      if (/^OK(\s|$)/m.test(out)) return resolve({ ok: true, out });
-      resolve({ ok: false, error: err ? `stderr: ${err}` : `no-OK-marker: ${out || "(empty)"}` });
-    });
-  });
+  const r = await spawnCapture(
+    "powershell.exe",
+    ["-NoProfile", "-NonInteractive", "-OutputFormat", "Text", "-EncodedCommand", encoded],
+    { timeoutMs },
+  );
+  if (r.timedOut) return { ok: false, error: "timeout" };
+  if (r.err) return { ok: false, error: `spawn: ${r.err}` };
+  const out = r.stdout.trim();
+  const err = r.stderr.trim();
+  if (r.code !== 0) return { ok: false, error: err || out || `exit-${r.code}` };
+  if (out.includes("ERROR:")) return { ok: false, error: out };
+  // Success line is `OK <trace…>` so we anchor at the start; the trace tail
+  // is preserved in `out` and forwarded into the focus-result reason for
+  // runtime visibility.
+  if (/^OK(\s|$)/m.test(out)) return { ok: true, out };
+  return { ok: false, error: err ? `stderr: ${err}` : `no-OK-marker: ${out || "(empty)"}` };
 }
