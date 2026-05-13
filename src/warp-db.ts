@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { initWarpCwdNormalizer, normalizeWarpCwd } from "./warp-cwd.js";
 
 /**
  * Warp stores per-pane cwd + per-tab/window structure in a sqlite DB under its
@@ -77,15 +78,21 @@ export async function readWarpPanes(): Promise<WarpDbResult> {
       clearTimeout(timer);
       resolve({ ok: false, error: `spawn: ${err.message}` });
     });
-    child.on("close", (code) => {
+    child.on("close", async (code) => {
       clearTimeout(timer);
       if (code !== 0) return resolve({ ok: false, error: stderr.trim() || `exit-${code}` });
-      resolve({ ok: true, snapshot: parseSnapshot(stdout) });
+      try {
+        resolve({ ok: true, snapshot: await parseSnapshot(stdout) });
+      } catch (err) {
+        resolve({ ok: false, error: `parse: ${(err as Error).message}` });
+      }
     });
   });
 }
 
-function parseSnapshot(stdout: string): WarpSnapshot {
+async function parseSnapshot(stdout: string): Promise<WarpSnapshot> {
+  await initWarpCwdNormalizer();
+
   const panes: WarpPaneRow[] = [];
   const activeTabByWindow = new Map<number, number>();
   const tabCountByWindow = new Map<number, number>();
@@ -100,7 +107,7 @@ function parseSnapshot(stdout: string): WarpSnapshot {
       const w = parseInt(parts[0], 10);
       const t = parseInt(parts[1], 10);
       if (Number.isInteger(w) && Number.isInteger(t)) {
-        panes.push({ windowId: w, tabIndex: t, paneCwd: parts.slice(2).join("\t") });
+        panes.push({ windowId: w, tabIndex: t, paneCwd: normalizeWarpCwd(parts.slice(2).join("\t")) });
       }
     } else if (section === "WINDOWS" && parts.length >= 3) {
       const w = parseInt(parts[0], 10);
