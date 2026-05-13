@@ -103,22 +103,27 @@ if [ -f "$WSL_HOOK" ] && [ -x "$WSL_HOOK" ]; then
 else
   fail "$WSL_HOOK (missing or not executable)"
 fi
-if [ -f "$WIN_HOOK" ]; then
-  ok "$WIN_HOOK"
-else
-  fail "$WIN_HOOK (missing)"
+# notification.ps1 is irrelevant on macOS; only check it elsewhere.
+if [ "$(uname -s)" != "Darwin" ]; then
+  if [ -f "$WIN_HOOK" ]; then
+    ok "$WIN_HOOK"
+  else
+    fail "$WIN_HOOK (missing)"
+  fi
 fi
 
-# --- WSL settings ---------------------------------------------------------
-check_settings "WSL hooks (${USER:-?})" "${HOME}/.claude/settings.json" "$WSL_HOOK_REGEX"
+# --- Local POSIX settings (WSL on Windows, macOS native) ------------------
+check_settings "Local hooks (${USER:-?})" "${HOME}/.claude/settings.json" "$WSL_HOOK_REGEX"
 
-# --- Windows settings -----------------------------------------------------
-if [ -d "$WIN_HOME" ]; then
-  check_settings "Windows hooks (${WIN_USER})" "${WIN_HOME}/.claude/settings.json" "$WIN_HOOK_REGEX"
-else
-  echo
-  echo "${BOLD}Windows hooks (${WIN_USER})${RESET}"
-  warn "Windows home not found at ${WIN_HOME} — set WIN_USER=<name> if your account is different"
+# --- Windows settings (skipped on macOS — no WSL/Windows split here) ------
+if [ "$(uname -s)" != "Darwin" ]; then
+  if [ -d "$WIN_HOME" ]; then
+    check_settings "Windows hooks (${WIN_USER})" "${WIN_HOME}/.claude/settings.json" "$WIN_HOOK_REGEX"
+  else
+    echo
+    echo "${BOLD}Windows hooks (${WIN_USER})${RESET}"
+    warn "Windows home not found at ${WIN_HOME} — set WIN_USER=<name> if your account is different"
+  fi
 fi
 
 # --- Summary --------------------------------------------------------------

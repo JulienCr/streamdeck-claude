@@ -53,13 +53,23 @@ if ($eventName -eq 'SessionStart') {
 
 $ts = [int64](([DateTimeOffset]::UtcNow).ToUnixTimeMilliseconds())
 
+# For TodoWrite, snapshot the list's statuses so the plugin can draw a
+# progress column. [string[]] cast preserves array shape for 0/1-element
+# lists through ConvertTo-Json on PowerShell 5.1.
+$todos = $null
+if ($toolName -eq 'TodoWrite') {
+    try {
+        $todos = [string[]]@($obj.tool_input.todos | ForEach-Object { $_.status })
+    } catch {
+        $todos = [string[]]@()
+    }
+}
+
 # Use ConvertTo-Json so embedded quotes/backslashes in tool names get escaped
 # correctly — string interpolation would corrupt the line.
-$entry = if ($toolName) {
-    [ordered]@{ ts = $ts; event = $eventName; tool = $toolName }
-} else {
-    [ordered]@{ ts = $ts; event = $eventName }
-}
+$entry = [ordered]@{ ts = $ts; event = $eventName }
+if ($toolName)         { $entry.tool  = $toolName }
+if ($null -ne $todos)  { $entry.todos = $todos }
 $line = $entry | ConvertTo-Json -Compress
 
 Add-Content -Path $target -Value $line -Encoding utf8

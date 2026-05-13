@@ -20,7 +20,7 @@ Reference SVGs for every state live in [`icons/`](./icons).
 ## How it works
 
 - Claude Code writes one JSON file per running CLI session under `~/.claude/sessions/<pid>.json`.
-- The plugin polls that directory once per second, batches a `kill -0 <pid>` check (over `wsl.exe -d Ubuntu` on Windows hosts) to filter out stale files, sorts the live sessions by `startedAt`, and renders an SVG per slot via `setImage`.
+- The plugin polls that directory once per second, batches a `kill -0 <pid>` check (over `wsl.exe -d Ubuntu` when running on a Windows host, plain bash on macOS/Linux) to filter out stale files, sorts the live sessions by `startedAt`, and renders an SVG per slot via `setImage`.
 - Each registered Claude Code hook event appends one JSON line to `~/.claude/sessions/<sessionId>.events.ndjson`. The plugin reads that log every tick and replays it through a small state machine (`src/session-events.ts`) to derive the icon state.
 
 | Hook event | Effect on state |
@@ -39,7 +39,26 @@ Reference SVGs for every state live in [`icons/`](./icons).
 
 ## Setup (one-time)
 
-Prereqs: pnpm, jq, Node.js 20+, an Elgato Stream Deck connected to a Windows host with the Stream Deck app installed and Windows Developer Mode enabled (lets `mklink /D` work without admin).
+Prereqs: pnpm, jq, perl, Node.js 20+, an Elgato Stream Deck with the SD app installed.
+
+### macOS
+
+```bash
+pnpm install
+pnpm build
+pnpm install:hook    # add hooks to ~/.claude/settings.json
+pnpm sd:link         # symlink .sdPlugin into ~/Library/Application Support/com.elgato.StreamDeck/Plugins/
+pnpm sd:validate
+# Quit + relaunch the Stream Deck app so it picks up the new plugin.
+```
+
+No `mklink`, no Developer Mode, no UNC — the macOS branch of each script just uses native `ln -s` and writes the hook directly to `~/.claude/settings.json`.
+
+**Warp tab focus (optional):** pressing a slot copies the session's `cwd` to the clipboard and, on macOS, also tries to focus the matching Warp tab. Warp exposes no public focus API (URL scheme, AppleScript, CLI — all confirmed missing; its AX tree is empty too), so the plugin reads Warp's local SQLite DB (`~/Library/Group Containers/2BBY89MBSN.dev.warp/…/warp.sqlite`, read-only) to map `cwd → (window, tab_index)`, scores by exact match > prefix > token overlap on path components, then sends `Cmd+<digit>` (tabs 1-9) or `Cmd+Option+→/←` cycling (tabs 10+) via System Events. On first click, macOS prompts to allow **Stream Deck** under *System Settings → Privacy & Security → Accessibility*. If you decline, the clipboard copy still works; only the focus attempt is silently skipped.
+
+### WSL + Windows
+
+Extra prereq: Windows Developer Mode enabled (lets `mklink /D` work without admin).
 
 ```bash
 pnpm install

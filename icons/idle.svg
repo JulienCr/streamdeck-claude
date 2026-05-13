@@ -8,8 +8,23 @@
   <text x="10.00" y="30">wolfgangparis</text>
   <text x="181.26" y="30">wolfgangparis</text>
 </g>
-<g><path d="M72 32 L72 70 M56 54 L72 72 L88 54" fill="none" stroke="#3b82f6" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
-<rect x="46" y="80" width="52" height="5" rx="2.5" fill="#3b82f6"/></g>
+<g transform="translate(0,8)"><g transform="translate(42 16) scale(4)">
+<rect x="3" y="15" width="9" height="1" fill="#000" opacity="0.45"/>
+<rect x="3" y="12" width="1" height="3" fill="#DE886D"/>
+<rect x="5" y="12" width="1" height="3" fill="#DE886D"/>
+<rect x="9" y="12" width="1" height="3" fill="#DE886D"/>
+<rect x="11" y="12" width="1" height="3" fill="#DE886D"/>
+<g transform="translate(7.5 13) scale(1 1.000) translate(-7.5 -13)">
+<rect x="2" y="6" width="11" height="7" fill="#DE886D"/>
+<rect x="0" y="9" width="2" height="2" fill="#DE886D"/>
+<rect x="13" y="9" width="2" height="2" fill="#DE886D"/>
+<g transform="translate(7.5 9) scale(1 1) translate(-7.5 -9)">
+<rect x="4" y="8" width="1" height="2" fill="#000"/>
+<rect x="10" y="8" width="1" height="2" fill="#000"/>
+</g>
+</g>
+</g></g>
+
 
 
 </svg>

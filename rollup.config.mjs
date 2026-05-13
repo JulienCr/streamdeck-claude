@@ -10,9 +10,11 @@ const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const isWatching = !!process.env.ROLLUP_WATCH;
 const sdPlugin = "com.julien.claudesessions.sdPlugin";
 
-// Build-time values for src/env.ts. The plugin is launched by the SD app on
-// Windows, where HOME / WSL_DISTRO_NAME aren't set, so we bake the build-host
-// values into the bundle. Build always runs from WSL.
+// Build-time values for src/env.ts. The Windows-side SD app launches the
+// plugin without HOME / WSL_DISTRO_NAME set, so we bake build-host values
+// into the bundle as a fallback. Builds from WSL inject the live values;
+// macOS builds inject HOME (used at runtime) and a harmless "Ubuntu" for
+// WSL_DISTRO_NAME (never accessed on darwin, since wsl.exe is never spawned).
 const BUILD_WSL_HOME = process.env.HOME || `/home/${userInfo().username}`;
 const BUILD_WSL_DISTRO = process.env.WSL_DISTRO_NAME || "Ubuntu";
 

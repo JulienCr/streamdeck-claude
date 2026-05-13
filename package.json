@@ -14,9 +14,9 @@
     "check:hooks": "bash scripts/check-hooks.sh",
     "sd:link": "bash scripts/link-plugin.sh",
     "sd:unlink": "bash scripts/unlink-plugin.sh",
-    "sd:validate": "cross-env HOME=/mnt/c/Users/julie pnpm exec streamdeck validate com.julien.claudesessions.sdPlugin",
-    "sd:pack": "cross-env HOME=/mnt/c/Users/julie pnpm exec streamdeck pack com.julien.claudesessions.sdPlugin --output dist/",
-    "sd:dev": "cross-env HOME=/mnt/c/Users/julie pnpm exec streamdeck dev",
+    "sd:validate": "bash scripts/sd-cli.sh validate com.julien.claudesessions.sdPlugin",
+    "sd:pack": "bash scripts/sd-cli.sh pack com.julien.claudesessions.sdPlugin --output dist/",
+    "sd:dev": "bash scripts/sd-cli.sh dev",
     "sd:reload": "bash scripts/reload-plugin.sh"
   },
   "devDependencies": {
@@ -28,7 +28,6 @@
     "@rollup/plugin-typescript": "^12.1.0",
     "@tsconfig/node20": "^20.1.2",
     "@types/node": "~20.15.0",
-    "cross-env": "^10.1.0",
     "rollup": "^4.0.2",
     "tslib": "^2.6.2",
     "tsx": "^4.21.0",

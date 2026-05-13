@@ -43,6 +43,8 @@ done
 # --- Per-target setup: SETTINGS_PATH and HOOK_CMD --------------------------
 case "$TARGET" in
   wsl)
+    # "wsl" is the historical name; this branch also covers macOS native, since
+    # both write to $HOME/.claude/settings.json with the POSIX hook.
     SETTINGS_PATH="${HOME}/.claude/settings.json"
     HOOK_CMD="${ROOT}/hooks/notification.sh"
     if [ ! -x "$HOOK_CMD" ]; then
@@ -50,6 +52,10 @@ case "$TARGET" in
     fi
     ;;
   windows)
+    if [ "$(uname -s)" = "Darwin" ]; then
+      echo "error: --target=windows is not supported on macOS (no WSL/Windows split here). Use the default --target=wsl." >&2
+      exit 2
+    fi
     SOURCE_PS1="${ROOT}/hooks/notification.ps1"
     WIN_USER="${WIN_USER:-julie}"
     WIN_HOME="/mnt/c/Users/${WIN_USER}"
@@ -141,6 +147,7 @@ merge "SessionStart"     ""
 merge "Notification"     ""
 merge "PreToolUse"       "ExitPlanMode"
 merge "PostToolUse"      "ExitPlanMode"
+merge "PostToolUse"      "TodoWrite"
 merge "Stop"             ""
 merge "StopFailure"      ""
 merge "UserPromptSubmit" ""
@@ -151,7 +158,7 @@ merge "SessionEnd"       ""
 # --- Final summary ---------------------------------------------------------
 echo "Hook command:"
 echo "  $HOOK_CMD"
-echo "Registered for: SessionStart, Notification, PreToolUse[ExitPlanMode], PostToolUse[ExitPlanMode], Stop, StopFailure, UserPromptSubmit, SubagentStart, SubagentStop, SessionEnd"
+echo "Registered for: SessionStart, Notification, PreToolUse[ExitPlanMode], PostToolUse[ExitPlanMode], PostToolUse[TodoWrite], Stop, StopFailure, UserPromptSubmit, SubagentStart, SubagentStop, SessionEnd"
 echo "Settings: $SETTINGS_PATH  (backup at $BACKUP)"
 if [ "$TARGET" = "windows" ]; then
   echo

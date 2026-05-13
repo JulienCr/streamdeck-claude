@@ -21,10 +21,14 @@ export async function renderAll(
     const slotIndex = i + 1;
     const state = entry?.state ?? "empty";
     const label = entry?.session.label ?? "";
-    const useFrame = isAnimated(state) ? frame : 0;
+    const todos = entry?.session.todos;
+    // Animate the frame when the motif itself animates, OR when an in-progress
+    // todo square needs to pulse (renderTodoColumn reads `frame` for the wave).
+    const animateFrame = isAnimated(state) || (todos && todos.some((s) => s === "in_progress"));
+    const useFrame = animateFrame ? frame : 0;
 
     const svg = entry
-      ? renderIcon({ state, slot: slotIndex, label, frame: useFrame })
+      ? renderIcon({ state, slot: slotIndex, label, frame: useFrame, todos })
       : renderIcon({ state: "empty", slot: slotIndex, label: "", frame: 0 });
     const dataUrl = "data:image/svg+xml;base64," + Buffer.from(svg, "utf8").toString("base64");
 
@@ -32,10 +36,14 @@ export async function renderAll(
     if (!slotState) continue;
     if (slotState.lastSvg === dataUrl) {
       slotState.clipboardPayload = entry?.session.cwd;
+      slotState.sessionId = entry?.session.sessionId;
+      slotState.origin = entry?.session.origin;
       continue;
     }
     slotState.lastSvg = dataUrl;
     slotState.clipboardPayload = entry?.session.cwd;
+    slotState.sessionId = entry?.session.sessionId;
+    slotState.origin = entry?.session.origin;
     try {
       await action.setImage(dataUrl);
     } catch (err) {

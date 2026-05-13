@@ -5,14 +5,13 @@ import { SetupAction } from "./setup-action.js";
 import { watchForReload } from "./reload-watcher.js";
 import { createStateTracker } from "./state-tracker.js";
 import { renderAll } from "./render-loop.js";
-import { wipeAllEventLogs } from "./sessions.js";
+import { wipeAllEventLogs, wipeSessionEventLog, type SessionOrigin } from "./sessions.js";
 
 streamDeck.logger.setLevel(LogLevel.DEBUG);
 
 const POLL_MS = 1000;
 const ANIMATION_MS = 120;
 
-const slotAction = new SlotAction();
 const tracker = createStateTracker();
 let frame = 0;
 let slowTickRunning = false;
@@ -41,6 +40,16 @@ async function refreshNow() {
   return result;
 }
 
+async function resetSlot(sessionId: string, origin: SessionOrigin): Promise<void> {
+  const r = await wipeSessionEventLog(sessionId, origin);
+  if (!r.wiped) {
+    streamDeck.logger.warn(`wipeSessionEventLog(${origin}/${sessionId}) failed: ${r.error}`);
+    throw new Error(r.error ?? "wipe failed");
+  }
+  await runSlowTick();
+}
+
+const slotAction = new SlotAction(resetSlot);
 const setupAction = new SetupAction(refreshNow);
 
 streamDeck.actions.registerAction(slotAction);

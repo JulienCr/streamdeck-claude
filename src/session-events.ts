@@ -4,10 +4,15 @@
  *  no mtime heuristics, no per-state sidecar files, no race conditions between
  *  drop/rm pairs. Adding a new state = one case in `applyEvent`. */
 
+export type TodoStatus = "pending" | "in_progress" | "completed";
+const VALID_TODO_STATUS: ReadonlySet<TodoStatus> = new Set(["pending", "in_progress", "completed"]);
+
 export interface SessionEvent {
   ts: number;
   event: string;
   tool?: string;
+  /** Present only for PostToolUse[TodoWrite] — snapshot of the new list's statuses. */
+  todos?: TodoStatus[];
 }
 
 /** What the icon needs, derived from the event log. The session's busy/idle
@@ -18,6 +23,8 @@ export interface DerivedState {
   awaitingPlan: boolean;
   errored: boolean;
   subagentDepth: number;
+  /** Most recent TodoWrite snapshot; empty until the agent calls TodoWrite. */
+  todos: TodoStatus[];
 }
 
 /** Internal accumulator: same as DerivedState plus `inTurn`, which is true
@@ -29,7 +36,7 @@ interface ReducerState extends DerivedState {
   inTurn: boolean;
 }
 
-const ZERO: ReducerState = { awaiting: false, awaitingPlan: false, errored: false, subagentDepth: 0, inTurn: false };
+const ZERO: ReducerState = { awaiting: false, awaitingPlan: false, errored: false, subagentDepth: 0, todos: [], inTurn: false };
 
 export function reduceEvents(events: readonly SessionEvent[]): DerivedState {
   let state = ZERO;
@@ -58,7 +65,9 @@ function applyEvent(state: ReducerState, ev: SessionEvent): ReducerState {
       return ev.tool === "ExitPlanMode" ? { ...state, awaitingPlan: true } : state;
 
     case "PostToolUse":
-      return ev.tool === "ExitPlanMode" ? { ...state, awaitingPlan: false } : state;
+      if (ev.tool === "ExitPlanMode") return { ...state, awaitingPlan: false };
+      if (ev.tool === "TodoWrite" && ev.todos) return { ...state, todos: ev.todos };
+      return state;
 
     case "Stop":
       return { ...state, inTurn: false, awaiting: false, awaitingPlan: false };
@@ -87,7 +96,16 @@ export function parseEventLog(text: string): SessionEvent[] {
     try {
       const obj = JSON.parse(line);
       if (typeof obj.ts === "number" && typeof obj.event === "string") {
-        out.push({ ts: obj.ts, event: obj.event, tool: typeof obj.tool === "string" ? obj.tool : undefined });
+        const todos = Array.isArray(obj.todos)
+          && obj.todos.every((s: unknown) => typeof s === "string" && VALID_TODO_STATUS.has(s as TodoStatus))
+          ? (obj.todos as TodoStatus[])
+          : undefined;
+        out.push({
+          ts: obj.ts,
+          event: obj.event,
+          tool: typeof obj.tool === "string" ? obj.tool : undefined,
+          todos,
+        });
       }
     } catch {
       // skip malformed line
