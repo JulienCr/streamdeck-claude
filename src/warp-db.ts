@@ -223,9 +223,22 @@ export function pickBestPane(
     if (s.score > top.score) {
       top = { score: s.score, row: s.row };
       tied = false;
-    } else if (s.score === top.score && s.score > 0) {
-      // Tie OK if it's the same (window, tab) seen via multiple panes.
-      if (top.row && (s.row.windowId !== top.row.windowId || s.row.tabIndex !== top.row.tabIndex)) {
+    } else if (s.score === top.score && s.score > 0 && top.row) {
+      const sameTab = s.row.windowId === top.row.windowId && s.row.tabIndex === top.row.tabIndex;
+      if (sameTab) continue;
+      // Exact matches (score 1000) are unambiguously correct — when the
+      // same cwd resolves to multiple tabs (e.g. Warp stores both a UNC
+      // form and a drive-aliased form pointing at the same WSL dir, or
+      // the user genuinely has the same dir open in two tabs), we pick
+      // the lowest (windowId, tabIndex) deterministically rather than
+      // refusing. Lower scores keep the strict tie-break — token overlap
+      // ties have no canonical winner.
+      if (s.score >= 1000) {
+        const better =
+          s.row.windowId < top.row.windowId ||
+          (s.row.windowId === top.row.windowId && s.row.tabIndex < top.row.tabIndex);
+        if (better) top = { score: s.score, row: s.row };
+      } else {
         tied = true;
       }
     }
