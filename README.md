@@ -80,6 +80,8 @@ Both hooks behave identically: they read the hook payload from stdin, extract `s
 
 After linking, **quit + relaunch the Stream Deck app** (right-click tray icon → Quit). The "Claude Sessions" category appears in the actions list — drag **Claude Session Slot** onto as many keys as you want to dedicate to live sessions. The plugin orders them by deck position (top-to-bottom, left-to-right) and fills as many as you provide.
 
+**Warp tab focus (optional):** as on macOS, pressing a slot also tries to focus the matching Warp tab. The Windows port reads the same SQLite schema (under `%LOCALAPPDATA%\warp\Warp\data\warp.sqlite`) but the cwd values are Windows-shaped even for WSL shells — UNC (`\\WSL$\<distro>\…`, `\\wsl.localhost\<distro>\…`) or user-mapped drives (`W:\…`) — so the plugin normalizes those back to Linux form before scoring. Keystroke goes via Win32 `SendInput` with `Ctrl+VK_NUMPAD<n>` (tabs 1-9) or `Ctrl+PageDown/PageUp` cycle (tabs 10+) — Warp Windows only binds numpad digits, not top-row. Cross-process focus raise uses `AttachThreadInput` + `SetForegroundWindow` so the keystroke lands on Warp even when another app (Chrome, VS Code, …) is foreground when you press the deck key. Requires `sqlite3.exe` on PATH or under a known install dir (WinGet, Git for Windows) — `winget install SQLite.SQLite` if missing. No accessibility prompt.
+
 ## Available pnpm scripts
 
 | Script | What it does |
@@ -117,6 +119,11 @@ Plugin logs land at `%APPDATA%\Elgato\StreamDeck\Plugins\com.julien.claudesessio
 │   ├── slot-action.ts                    # SingletonAction, key handlers
 │   ├── sessions.ts                       # reads ~/.claude/sessions/
 │   ├── live-pids.ts                      # batched kill -0 over wsl.exe
+│   ├── warp-db.ts                        # read-only sqlite3 -> (window, tab_index) for a cwd
+│   ├── warp-cwd.ts                       # Win UNC / drive normalizer for WSL paths
+│   ├── warp-focus.ts                     # platform dispatcher
+│   ├── warp-focus-mac.ts                 # osascript activate + Cmd+digit / cycle keystroke
+│   ├── warp-focus-win.ts                 # powershell.exe + AttachThreadInput + SendInput
 │   └── icons/                            # renderIcon(state, slot, label) -> SVG; theme, motifs, states, render — split per concern
 ├── icons/                                # standalone reference SVGs (one per state)
 ├── hooks/
