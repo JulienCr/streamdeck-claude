@@ -1,9 +1,10 @@
-import { readdir, readFile, unlink } from "node:fs/promises";
+import { readdir, readFile, stat, unlink } from "node:fs/promises";
 import { platform } from "node:os";
 import { join } from "node:path";
+import streamDeck from "@elgato/streamdeck";
 import type { SessionState } from "./icons/index.js";
 import { WIN_SESSIONS_DIR, WSL_SESSIONS_DIR, WSL_SESSIONS_DIR_FROM_WIN } from "./env.js";
-import { parseEventLog, reduceEvents, type TodoStatus } from "./session-events.js";
+import { parseEventLog, reduceEvents, type DerivedState, type TodoStatus } from "./session-events.js";
 
 /** WSL or Windows-native Claude Code session — they live in different folders
  *  with different process namespaces and need different liveness checks. */
@@ -28,6 +29,17 @@ export const SESSION_SOURCES: SessionSourceDir[] = platform() === "win32"
 
 /** Surface readdir errors to the polling loop so it can log them once. */
 export let lastReadError: string | undefined;
+
+/** Cache of derived state per event-log path. Re-reading + reducing the NDJSON
+ *  every tick is wasteful since the log only grows when a hook fires; gate it
+ *  on (mtimeMs, size) so unchanged logs short-circuit. Keyed by full path so
+ *  wsl/windows source dirs with the same sessionId don't collide. */
+interface EventLogCacheEntry {
+  mtimeMs: number;
+  size: number;
+  derived: DerivedState;
+}
+const eventLogCache = new Map<string, EventLogCacheEntry>();
 
 interface RawSession {
   pid: number;
@@ -95,14 +107,28 @@ async function readOneSource(src: SessionSourceDir): Promise<SessionInfo[]> {
         }
         const status = raw.status === "busy" ? "busy" : "idle";
 
-        let derived: ReturnType<typeof reduceEvents> = {
+        let derived: DerivedState = {
           awaiting: false, awaitingPlan: false, errored: false, subagentDepth: 0, todos: [],
         };
+        const eventsPath = join(src.path, `${raw.sessionId}.events.ndjson`);
         try {
-          const text = await readFile(join(src.path, `${raw.sessionId}.events.ndjson`), "utf8");
-          derived = reduceEvents(parseEventLog(text));
-        } catch {
-          // no event log yet — defaults are fine
+          const st = await stat(eventsPath);
+          const cached = eventLogCache.get(eventsPath);
+          if (cached && cached.mtimeMs === st.mtimeMs && cached.size === st.size) {
+            derived = cached.derived;
+          } else {
+            const text = await readFile(eventsPath, "utf8");
+            derived = reduceEvents(parseEventLog(text));
+            eventLogCache.set(eventsPath, { mtimeMs: st.mtimeMs, size: st.size, derived });
+          }
+        } catch (err: unknown) {
+          const code = (err as NodeJS.ErrnoException)?.code;
+          if (code !== "ENOENT") {
+            streamDeck.logger.warn(
+              `event-log read failed ${src.origin}/${raw.sessionId}: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          }
+          // no event log yet (ENOENT) — defaults are fine; don't cache
         }
 
         out.push({
@@ -129,7 +155,18 @@ async function readOneSource(src: SessionSourceDir): Promise<SessionInfo[]> {
 export async function readAllSessions(): Promise<SessionInfo[]> {
   lastReadError = undefined;
   const results = await Promise.all(SESSION_SOURCES.map(readOneSource));
-  return results.flat();
+  const sessions = results.flat();
+  // Prune cache entries whose session is gone (SessionEnd unlinked the log, or
+  // the .json disappeared) so the map stays bounded by live-session count.
+  const expected = new Set<string>();
+  for (const s of sessions) {
+    const src = SESSION_SOURCES.find((d) => d.origin === s.origin);
+    if (src) expected.add(join(src.path, `${s.sessionId}.events.ndjson`));
+  }
+  for (const key of eventLogCache.keys()) {
+    if (!expected.has(key)) eventLogCache.delete(key);
+  }
+  return sessions;
 }
 
 /** Unlinks one `<sid>.events.ndjson` from the source dir matching `origin`.
