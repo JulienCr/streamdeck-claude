@@ -17,7 +17,8 @@
     "sd:validate": "bash scripts/sd-cli.sh validate com.julien.claudesessions.sdPlugin",
     "sd:pack": "bash scripts/sd-cli.sh pack com.julien.claudesessions.sdPlugin --output dist/",
     "sd:dev": "bash scripts/sd-cli.sh dev",
-    "sd:reload": "bash scripts/reload-plugin.sh"
+    "sd:reload": "bash scripts/reload-plugin.sh",
+    "drill": "tsx scripts/drill-states.ts"
   },
   "devDependencies": {
     "@elgato/cli": "^1.7.4",
