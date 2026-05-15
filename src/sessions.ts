@@ -59,8 +59,14 @@ export interface SessionInfo {
   label: string;
   startedAt: number;
   rawStatus: "busy" | "idle";
-  /** Awaiting a permission/input notification from the user. */
+  /** Awaiting a generic input notification from the user (elicitation_dialog,
+   *  or any in-turn Notification with no/unknown notifType). */
   awaiting: boolean;
+  /** Awaiting tool-permission approval (Notification[permission_prompt]). */
+  awaitingPermission: boolean;
+  /** Awaiting answer to an AskUserQuestion UI prompt (PreToolUse fired but no
+   *  matching PostToolUse yet). */
+  awaitingQuestion: boolean;
   /** Awaiting plan approval (ExitPlanMode tool used). */
   awaitingPlan: boolean;
   /** Last turn ended with StopFailure and no UserPromptSubmit since. */
@@ -108,7 +114,7 @@ async function readOneSource(src: SessionSourceDir): Promise<SessionInfo[]> {
         const status = raw.status === "busy" ? "busy" : "idle";
 
         let derived: DerivedState = {
-          awaiting: false, awaitingPlan: false, errored: false, subagentDepth: 0, todos: [],
+          awaiting: false, awaitingPermission: false, awaitingQuestion: false, awaitingPlan: false, errored: false, subagentDepth: 0, todos: [],
         };
         const eventsPath = join(src.path, `${raw.sessionId}.events.ndjson`);
         try {
@@ -139,6 +145,8 @@ async function readOneSource(src: SessionSourceDir): Promise<SessionInfo[]> {
           startedAt: typeof raw.startedAt === "number" ? raw.startedAt : 0,
           rawStatus: status,
           awaiting: derived.awaiting,
+          awaitingPermission: derived.awaitingPermission,
+          awaitingQuestion: derived.awaitingQuestion,
           awaitingPlan: derived.awaitingPlan,
           errored: derived.errored,
           subagentActive: derived.subagentDepth > 0,
@@ -219,14 +227,21 @@ export async function wipeAllEventLogs(): Promise<{ wiped: number; errors: strin
 }
 
 /** State for the icon, derived from session status + event-log projection + liveness.
- *  Priority: dead > error > plan-approval > permission-prompt > subagent > working > idle.
- *  An errored session may already be back to idle by the time we see it,
- *  so error wins regardless of busy/idle. */
+ *  Priority: finished > error > awaiting_plan > awaiting_permission >
+ *  awaiting_question > awaiting > subagent > working > idle. Plan approval ranks
+ *  first among "needs you" states because users can sit on it longest; the more
+ *  specific flags (permission, question) win over the generic catch-all so the
+ *  distinct icon shows up. All awaiting* flags win over rawStatus="busy" since
+ *  CC keeps the session marked busy while waiting — the event log is the source
+ *  of truth for "needs input." Spurious idle-reminder Notifications fired after
+ *  Stop are already filtered upstream in reduceEvents via its inTurn guard. */
 export function deriveState(s: SessionInfo, alive: boolean): SessionState {
   if (!alive) return "finished";
   if (s.errored) return "error";
-  if (s.rawStatus === "idle" && s.awaitingPlan) return "awaiting_plan";
-  if (s.rawStatus === "idle" && s.awaiting) return "awaiting";
+  if (s.awaitingPlan) return "awaiting_plan";
+  if (s.awaitingPermission) return "awaiting_permission";
+  if (s.awaitingQuestion) return "awaiting_question";
+  if (s.awaiting) return "awaiting";
   if (s.rawStatus === "busy" && s.subagentActive) return "subagent";
   if (s.rawStatus === "busy") return "working";
   return "idle";

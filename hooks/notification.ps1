@@ -20,12 +20,16 @@ $payload = [Console]::In.ReadToEnd()
 $sessionId = $null
 $eventName = $null
 $toolName  = $null
+$notifType = $null
 if ($payload) {
     try {
         $obj       = $payload | ConvertFrom-Json
         $sessionId = $obj.session_id
         $eventName = $obj.hook_event_name
         $toolName  = $obj.tool_name
+        # notification_type is set by CC on Notification events
+        # (permission_prompt, idle_prompt, elicitation_dialog, auth_success).
+        $notifType = $obj.notification_type
     } catch {
         $sessionId = $null
     }
@@ -68,8 +72,9 @@ if ($toolName -eq 'TodoWrite') {
 # Use ConvertTo-Json so embedded quotes/backslashes in tool names get escaped
 # correctly — string interpolation would corrupt the line.
 $entry = [ordered]@{ ts = $ts; event = $eventName }
-if ($toolName)         { $entry.tool  = $toolName }
-if ($null -ne $todos)  { $entry.todos = $todos }
+if ($toolName)         { $entry.tool      = $toolName }
+if ($notifType)        { $entry.notifType = $notifType }
+if ($null -ne $todos)  { $entry.todos     = $todos }
 $line = $entry | ConvertTo-Json -Compress
 
 Add-Content -Path $target -Value $line -Encoding utf8

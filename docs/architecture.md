@@ -20,16 +20,24 @@ Every registered Claude Code hook event appends one JSON line to `~/.claude/sess
 | Hook event | Effect on state |
 |---|---|
 | `SessionStart` | truncates the log + resets state |
-| `Notification` | sets `awaiting` |
-| `Stop` | clears `awaiting` / `awaitingPlan` |
+| `Notification[permission_prompt]` | sets `awaitingPermission` (only in-turn) |
+| `Notification[*]` other in-turn types | sets `awaiting` (catch-all for `elicitation_dialog` / unknown / older logs) |
+| `Notification` post-Stop (`idle_prompt`) | ignored — filtered by reducer's `inTurn` guard |
+| `Stop` | clears `awaiting` / `awaitingPermission` / `awaitingQuestion` / `awaitingPlan` |
 | `PreToolUse[ExitPlanMode]` | sets `awaitingPlan` |
 | `PostToolUse[ExitPlanMode]` | clears `awaitingPlan` |
+| `PreToolUse[AskUserQuestion]` | sets `awaitingQuestion` |
+| `PostToolUse[AskUserQuestion]` | clears `awaitingQuestion` |
 | `StopFailure` | sets `errored` |
-| `UserPromptSubmit` | clears `awaiting` / `awaitingPlan` / `errored` |
+| `UserPromptSubmit` | clears all `awaiting*` flags + `errored` |
 | `SubagentStart` / `SubagentStop` | bumps `subagentDepth` ±1 |
 | `SessionEnd` | unlinks the log |
 
-To add a new state: register the event in `scripts/install-hook.sh`, add a case in `src/session-events.ts`, and an entry in the `STATES` registry at `src/icons/states.ts`. State priority for an idle session: `awaiting_plan` > `awaiting` > plain `idle` (see `deriveState()` in `src/sessions.ts`).
+The `notification_type` discrimination requires hooks to capture CC's `notification_type` field into the NDJSON `notifType` column — both `notification.sh` and `notification.ps1` already do this. Older logs without `notifType` fall through to plain `awaiting` (catch-all), so the regression risk is bounded.
+
+`PreToolUse` and `PostToolUse` are registered with **empty matcher** (catch-all), so the NDJSON gets one line per tool call. The reducer dispatches by `tool_name` — only `ExitPlanMode`, `AskUserQuestion`, and `TodoWrite` produce state transitions; other tools are no-ops. The trade-off is bigger logs (~1 line per Bash/Edit/Read), but `SessionStart` truncates so it stays bounded per CC run.
+
+To add a new state: register the event in `scripts/install-hook.sh`, add a case in `src/session-events.ts`, and an entry in the `STATES` registry at `src/icons/states.ts`. State priority (see `deriveState()` in `src/sessions.ts`): `finished` > `error` > `awaiting_plan` > `awaiting_permission` > `awaiting_question` > `awaiting` > `subagent` > `working` > `idle`. All `awaiting*` flags win over `busy` because CC keeps the session marked busy while waiting on the user.
 
 ## Path / environment resolution
 

@@ -17,6 +17,9 @@ INPUT="$(cat)"
 SESSION_ID="$(printf '%s' "$INPUT" | jq -r '.session_id // empty' 2>/dev/null || true)"
 EVENT="$(printf '%s' "$INPUT" | jq -r '.hook_event_name // empty' 2>/dev/null || true)"
 TOOL_NAME="$(printf '%s' "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null || true)"
+# notification_type is set by CC on Notification events (permission_prompt,
+# idle_prompt, elicitation_dialog, auth_success). Empty for non-Notification.
+NOTIF_TYPE="$(printf '%s' "$INPUT" | jq -r '.notification_type // empty' 2>/dev/null || true)"
 
 if [ -z "${SESSION_ID:-}" ] || [ -z "${EVENT:-}" ]; then
   echo '{}'
@@ -58,10 +61,12 @@ jq -nc \
   --argjson ts "$TS_MS" \
   --arg event "$EVENT" \
   --arg tool "$TOOL_NAME" \
+  --arg notifType "$NOTIF_TYPE" \
   --argjson todos "$TODOS_JSON" \
   '{ts: $ts, event: $event}
-   | (if $tool  != ""   then . + {tool:  $tool}  else . end)
-   | (if $todos != null then . + {todos: $todos} else . end)' \
+   | (if $tool      != ""   then . + {tool:      $tool}      else . end)
+   | (if $notifType != ""   then . + {notifType: $notifType} else . end)
+   | (if $todos     != null then . + {todos:     $todos}     else . end)' \
   >> "$TARGET"
 
 echo '{}'

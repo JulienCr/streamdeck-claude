@@ -11,6 +11,10 @@ export interface SessionEvent {
   ts: number;
   event: string;
   tool?: string;
+  /** CC's `notification_type` on Notification events: `permission_prompt`,
+   *  `idle_prompt`, `elicitation_dialog`, `auth_success`. Older logs from
+   *  before the hook captured this field will be `undefined`. */
+  notifType?: string;
   /** Present only for PostToolUse[TodoWrite] — snapshot of the new list's statuses. */
   todos?: TodoStatus[];
 }
@@ -19,7 +23,15 @@ export interface SessionEvent {
  *  flag still comes from the session JSON's `status` field — that's CC's own
  *  state, not ours to derive. */
 export interface DerivedState {
+  /** Generic in-turn Notification (non-permission). Catch-all for elicitation /
+   *  unknown notifType values so the icon still flags "needs input." */
   awaiting: boolean;
+  /** Notification[permission_prompt] in-turn — CC is asking to use a tool. */
+  awaitingPermission: boolean;
+  /** PreToolUse[AskUserQuestion] in-turn — CC is asking a UI question and
+   *  hasn't received an answer yet (PostToolUse fires only after the user
+   *  answers). Notification doesn't fire for AskUserQuestion. */
+  awaitingQuestion: boolean;
   awaitingPlan: boolean;
   errored: boolean;
   subagentDepth: number;
@@ -36,7 +48,7 @@ interface ReducerState extends DerivedState {
   inTurn: boolean;
 }
 
-const ZERO: ReducerState = { awaiting: false, awaitingPlan: false, errored: false, subagentDepth: 0, todos: [], inTurn: false };
+const ZERO: ReducerState = { awaiting: false, awaitingPermission: false, awaitingQuestion: false, awaitingPlan: false, errored: false, subagentDepth: 0, todos: [], inTurn: false };
 
 export function reduceEvents(events: readonly SessionEvent[]): DerivedState {
   let state = ZERO;
@@ -53,27 +65,36 @@ function applyEvent(state: ReducerState, ev: SessionEvent): ReducerState {
       return ZERO;
 
     case "UserPromptSubmit":
-      return { ...state, inTurn: true, awaiting: false, awaitingPlan: false, errored: false };
+      return { ...state, inTurn: true, awaiting: false, awaitingPermission: false, awaitingQuestion: false, awaitingPlan: false, errored: false };
 
     case "Notification":
       // Only an in-turn Notification is a real prompt to the user. After Stop,
       // CC keeps firing Notification every ~60 s as an idle reminder — those
       // would falsely flip the icon to awaiting while the user is afk.
-      return state.inTurn ? { ...state, awaiting: true } : state;
+      // Split permission_prompt (CC asking to use a tool — gets its own padlock
+      // icon) from anything else in-turn (elicitation_dialog / older logs with
+      // no notifType — generic "needs input" awaiting).
+      if (!state.inTurn) return state;
+      return ev.notifType === "permission_prompt"
+        ? { ...state, awaitingPermission: true }
+        : { ...state, awaiting: true };
 
     case "PreToolUse":
-      return ev.tool === "ExitPlanMode" ? { ...state, awaitingPlan: true } : state;
+      if (ev.tool === "ExitPlanMode") return { ...state, awaitingPlan: true };
+      if (ev.tool === "AskUserQuestion") return { ...state, awaitingQuestion: true };
+      return state;
 
     case "PostToolUse":
       if (ev.tool === "ExitPlanMode") return { ...state, awaitingPlan: false };
+      if (ev.tool === "AskUserQuestion") return { ...state, awaitingQuestion: false };
       if (ev.tool === "TodoWrite" && ev.todos) return { ...state, todos: ev.todos };
       return state;
 
     case "Stop":
-      return { ...state, inTurn: false, awaiting: false, awaitingPlan: false };
+      return { ...state, inTurn: false, awaiting: false, awaitingPermission: false, awaitingQuestion: false, awaitingPlan: false };
 
     case "StopFailure":
-      return { ...state, inTurn: false, awaiting: false, awaitingPlan: false, errored: true };
+      return { ...state, inTurn: false, awaiting: false, awaitingPermission: false, awaitingQuestion: false, awaitingPlan: false, errored: true };
 
     case "SubagentStart":
       return { ...state, subagentDepth: state.subagentDepth + 1 };
@@ -104,6 +125,7 @@ export function parseEventLog(text: string): SessionEvent[] {
           ts: obj.ts,
           event: obj.event,
           tool: typeof obj.tool === "string" ? obj.tool : undefined,
+          notifType: typeof obj.notifType === "string" ? obj.notifType : undefined,
           todos,
         });
       }

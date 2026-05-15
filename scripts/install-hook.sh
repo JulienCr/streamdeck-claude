@@ -143,11 +143,16 @@ merge() {
 
 prune_existing
 
+# PreToolUse / PostToolUse are registered catch-all (matcher="") rather than
+# tool-specific, so we capture every tool invocation in one shot. The reducer
+# in src/session-events.ts dispatches by `tool_name` — currently it cares about
+# ExitPlanMode, TodoWrite, and AskUserQuestion; other tools are noop'd at the
+# reducer level. Trade-off: bigger NDJSON per session (~1 line per tool call,
+# but SessionStart truncates so it's bounded per CC run).
 merge "SessionStart"     ""
 merge "Notification"     ""
-merge "PreToolUse"       "ExitPlanMode"
-merge "PostToolUse"      "ExitPlanMode"
-merge "PostToolUse"      "TodoWrite"
+merge "PreToolUse"       ""
+merge "PostToolUse"      ""
 merge "Stop"             ""
 merge "StopFailure"      ""
 merge "UserPromptSubmit" ""
@@ -158,7 +163,7 @@ merge "SessionEnd"       ""
 # --- Final summary ---------------------------------------------------------
 echo "Hook command:"
 echo "  $HOOK_CMD"
-echo "Registered for: SessionStart, Notification, PreToolUse[ExitPlanMode], PostToolUse[ExitPlanMode], PostToolUse[TodoWrite], Stop, StopFailure, UserPromptSubmit, SubagentStart, SubagentStop, SessionEnd"
+echo "Registered for: SessionStart, Notification, PreToolUse, PostToolUse, Stop, StopFailure, UserPromptSubmit, SubagentStart, SubagentStop, SessionEnd"
 echo "Settings: $SETTINGS_PATH  (backup at $BACKUP)"
 if [ "$TARGET" = "windows" ]; then
   echo

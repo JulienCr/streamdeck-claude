@@ -27,6 +27,42 @@ export function awaitingPulse(frame: number, color: string): string {
 <circle cx="72" cy="78" r="3" fill="${color}"/>`;
 }
 
+export function questionPulse(frame: number, color: string): string {
+  // Pulsing speech-bubble with "?" inside, for AskUserQuestion (PreToolUse).
+  // Same pulse beat as the rest of the "needs you" family so the four read as
+  // a set: orange ? = generic awaiting, amber padlock = permission, cyan bubble
+  // = UI question, violet doc = plan approval.
+  const phase = frame / ANIMATION_FRAMES;
+  const t = phase < 0.5 ? phase * 2 : (1 - phase) * 2;
+  const opacity = 0.55 + t * 0.45;
+  const stroke = (3 + t * 1.5).toFixed(1);
+  // Rounded rectangle bubble (44×34) with a small tail pointing down-left,
+  // and a "?" glyph centred inside.
+  return `<g opacity="${opacity.toFixed(2)}">
+<path d="M50 40 H94 a4 4 0 0 1 4 4 V72 a4 4 0 0 1 -4 4 H66 L58 86 L60 76 H54 a4 4 0 0 1 -4 -4 V44 a4 4 0 0 1 4 -4 z" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-linejoin="round"/>
+</g>
+<path d="M64 54 Q64 46 72 46 Q80 46 80 54 Q80 60 74 63 Q72 65 72 69" fill="none" stroke="${color}" stroke-width="4" stroke-linecap="round"/>
+<circle cx="72" cy="74" r="2.5" fill="${color}"/>`;
+}
+
+export function permissionPulse(frame: number, color: string): string {
+  // Pulsing padlock for permission_prompt. Same beat as awaitingPulse / planPulse
+  // so the three "needs you" states read as a family (orange = elicitation,
+  // amber padlock = tool permission, violet doc = plan approval).
+  const phase = frame / ANIMATION_FRAMES;
+  const t = phase < 0.5 ? phase * 2 : (1 - phase) * 2;
+  const opacity = 0.55 + t * 0.45;
+  const stroke = (3 + t * 1.5).toFixed(1);
+  // Shackle (∩) sits above the body; body is a rounded rect; keyhole is a
+  // small filled circle with a tapered line beneath, centred at cx=72.
+  return `<g opacity="${opacity.toFixed(2)}">
+<path d="M60 60 V50 Q60 38 72 38 Q84 38 84 50 V60" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-linecap="round"/>
+<rect x="52" y="58" width="40" height="34" rx="4" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-linejoin="round"/>
+</g>
+<circle cx="72" cy="72" r="3.5" fill="${color}"/>
+<path d="M72 75 L72 82" stroke="${color}" stroke-width="3.5" stroke-linecap="round"/>`;
+}
+
 export function planPulse(frame: number, color: string): string {
   // Pulsing document/clipboard outline with a checklist inside, signalling
   // "approve this plan". Same beat as awaitingPulse so the two read as a
