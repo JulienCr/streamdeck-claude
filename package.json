@@ -6,6 +6,7 @@
   "description": "Stream Deck plugin showing live Claude Code CLI session states",
   "scripts": {
     "build": "rollup -c",
+    "test": "tsx --test src/*.test.ts",
     "watch": "rollup -c -w --watch.onEnd=\"bash scripts/reload-plugin.sh\"",
     "icons:render": "tsx scripts/render-icons.mjs",
     "icons:static": "node scripts/render-static-pngs.mjs",
