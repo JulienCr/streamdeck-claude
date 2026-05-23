@@ -11,11 +11,16 @@ import type { SessionOrigin } from "../src/sessions.js";
 
 async function main() {
   const cwd = process.argv[2];
-  const origin = (process.argv[3] as SessionOrigin) ?? "wsl";
+  const originArg = process.argv[3];
   if (!cwd) {
     console.error('usage: pnpm check:vscode "<cwd>" [wsl|windows]');
     process.exit(2);
   }
+  if (originArg !== undefined && originArg !== "wsl" && originArg !== "windows") {
+    console.error(`origin must be "wsl" or "windows" (got "${originArg}")`);
+    process.exit(2);
+  }
+  const origin: SessionOrigin = originArg === "windows" ? "windows" : "wsl";
 
   const titles = await enumerate();
   console.log(`platform=${platform()} origin=${origin} windows=${titles.length}`);
@@ -25,17 +30,25 @@ async function main() {
   console.log(best ? `\nmatch → "${best.title}"` : "\nmatch → (none)");
 }
 
-/** Reuse the same enumeration the runtime backends use, OS-dispatched. */
+/** Enumerate VS Code window titles, OS-dispatched. This is a titles-only
+ *  simplification of the runtime backends (no HWND/sentinel parsing); it shares
+ *  the PowerShell/AppleScript window-selection logic, not the output format. */
 async function enumerate(): Promise<string[]> {
   if (platform() === "win32") {
     const { execFileSync } = await import("node:child_process");
     const ps = `Get-Process Code,'Code - Insiders' -ErrorAction SilentlyContinue |
       Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle } |
       ForEach-Object { $_.MainWindowTitle }`;
-    const out = execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", ps], {
-      encoding: "utf8",
-    });
-    return out.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+    try {
+      const out = execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", ps], {
+        encoding: "utf8",
+      });
+      return out.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+    } catch (err: unknown) {
+      const e = err as { stderr?: string; message?: string };
+      console.error(`powershell failed: ${(e.stderr || e.message || String(err)).trim()}`);
+      return [];
+    }
   }
   if (platform() === "darwin") {
     const { execFileSync } = await import("node:child_process");
@@ -47,8 +60,14 @@ async function enumerate(): Promise<string[]> {
       end repeat
       return out
     end tell`;
-    const out = execFileSync("/usr/bin/osascript", ["-e", osa], { encoding: "utf8" });
-    return out.split("\n").map((s) => s.trim()).filter(Boolean);
+    try {
+      const out = execFileSync("/usr/bin/osascript", ["-e", osa], { encoding: "utf8" });
+      return out.split("\n").map((s) => s.trim()).filter(Boolean);
+    } catch (err: unknown) {
+      const e = err as { stderr?: string; message?: string };
+      console.error(`osascript failed: ${(e.stderr || e.message || String(err)).trim()}`);
+      return [];
+    }
   }
   console.error(`enumeration not supported on ${platform()}`);
   return [];
