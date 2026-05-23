@@ -19,6 +19,7 @@ pnpm sd:link / sd:unlink           # (re)create the Windows-side mklink /D into 
 pnpm install:hook                  # register every event feeding reduceEvents into WSL ~/.claude/settings.json
 pnpm install:hook:windows          # same for Windows %USERPROFILE%\.claude\settings.json (no copy — registers the .ps1 over UNC)
 pnpm check:hooks                   # diff installed hook config against what install-hook.sh would write
+pnpm check:vscode                  # enumerate VS Code windows + show which one matches a given cwd (debug)
 pnpm icons:render       # regenerate icons/*.svg reference assets from src/icons/
 pnpm icons:static       # rasterize manifest PNGs from assets/svg/ via @resvg/resvg-js
 ```
@@ -101,4 +102,4 @@ The Windows hook is **not copied** — `install-hook.sh --target=windows` regist
 - Two Stream Deck actions are registered: `com.julien.claudesessions.slot` (one key per live CC session, in `src/slot-action.ts`) and `com.julien.claudesessions.setup` (a single maintenance key, in `src/setup-action.ts`). Both use the `@action({ UUID: "..." })` decorator AND must be passed to `streamDeck.actions.registerAction(...)` — the decorator alone is not enough.
 - The Setup action's key press (and its property inspector "Refresh States" button) calls `refreshNow()` in `plugin.ts`, which `wipeAllEventLogs()` (deletes every `<sid>.events.ndjson` across both source dirs) then runs an immediate `runSlowTick()`. The PI uses raw WebSocket against the Elgato bridge (`connectElgatoStreamDeckSocket`) — the SDK's TS API is plugin-side only.
 - Background context for Stream Deck plugin development inside WSL lives in the local skill `streamdeck-plugin-wsl` (`.claude/skills/`); session-introspection internals (the `<pid>.json` schema, dual-namespace liveness, hook patterns) are in `claude-code-process-introspection`. Invoke them via the `Skill` tool when relevant.
-- `docs/` holds reference notes (`architecture.md`, `development.md`, `warp-focus*.md`). `docs/code-refacto.md` specifically is an audit doc, not authoritative — treat as a record of considered ideas, not a TODO list.
+- `docs/` holds reference notes (`architecture.md`, `development.md`, `warp-focus*.md`, `vscode-focus.md`). `docs/code-refacto.md` specifically is an audit doc, not authoritative — treat as a record of considered ideas, not a TODO list.

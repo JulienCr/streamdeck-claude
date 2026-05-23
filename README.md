@@ -30,7 +30,6 @@ Each running `claude` CLI session lights up one key on your deck — project nam
   - **VS Code** — raises the VS Code window whose workspace matches the session
     (WSL-remote or native; macOS and Windows). Window-level only — it can't pick
     a specific integrated-terminal tab. See [`docs/vscode-focus.md`](docs/vscode-focus.md).
-
   If no match is found, the clipboard copy still happens so you can paste the path.
 - **Long-press (≥500 ms) → reset that session's state log** — useful if a stuck `awaiting` lingers.
 - **Setup key** — wipes all event logs and re-renders every slot in one press.

@@ -10,7 +10,7 @@ exact terminal pane (that would require a companion VS Code extension).
 ## How a session is tagged as "VS Code"
 
 A `SessionStart` hook runs inside the session's shell and stamps a `term` field
-into `<sid>.events.ndjson` (`{"…","term":"vscode"}`), derived from
+into `<sid>.events.ndjson` (`{"ts":…,"event":"SessionStart","term":"vscode"}`), derived from
 `$TERM_PROGRAM` (plus `VSCODE_PID`/`VSCODE_GIT_IPC_HANDLE`, which survive tmux
 overwriting `TERM_PROGRAM`). The plugin reduces this into `SessionInfo.terminal`
 and dispatches the slot-press focus by kind (`src/terminal-focus.ts`). Sessions
@@ -32,7 +32,7 @@ user who reshapes `window.title` to drop the folder name will defeat the match.
 
 ## Windows
 
-Enumerate via `Get-Process Code,'Code - Insiders' | ? MainWindowHandle -ne 0`
+Enumerate via `Get-Process Code,'Code - Insiders' | Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle }`
 (HWND + title). Raise the chosen HWND with the shared Win32 dance
 (`src/win32-raise.ts`): `AttachThreadInput` transfers the foreground lock from
 whatever app the deck press came from, then `ShowWindow`/`BringWindowToTop`/
@@ -44,13 +44,13 @@ VS Code exposes an Accessibility tree, so System Events enumerates
 `name of windows of process "Code"`, then `set frontmost to true` +
 `perform action "AXRaise"` on the window matched by exact name. Requires Stream
 Deck.app to hold Accessibility permission (the same grant the Warp path needs).
-Insiders ("Code - Insiders") is not handled on macOS.
+Insiders ("Code - Insiders") is not handled on macOS — the AXRaise path names only "Code", so Insiders sessions fall through to the clipboard copy.
 
 ## Failure modes
 
 All silent — clipboard still works, focus is skipped:
 
-| Reason | Log |
+| Reason | What it looks like in logs |
 |---|---|
 | VS Code not running | `no-vscode-windows` |
 | No window title matches the cwd | `no-match (windows=N)` |
