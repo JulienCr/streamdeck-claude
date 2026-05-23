@@ -43,3 +43,21 @@ test("returns null when nothing scores above zero", () => {
 test("returns null for an empty window list", () => {
   assert.equal(pickBestWindow("/x/foo", [], "wsl"), null);
 });
+
+test("WSL-origin: a [WSL] window with no basename match does not qualify", () => {
+  assert.equal(pickBestWindow("/home/u/foo", [win("bar [WSL: Ubuntu]")], "wsl"), null);
+});
+
+test("a rest-component match without the basename does not qualify", () => {
+  assert.equal(pickBestWindow("/home/dev/foo", [win("dev — bar")], "windows"), null);
+});
+
+test("among several qualifying windows the highest score wins", () => {
+  const best = pickBestWindow(
+    "/home/julien/dev/foo",
+    [win("foo"), win("julien — foo"), win("foo [WSL: Ubuntu]")],
+    "wsl",
+  );
+  // "foo [WSL]" = 10 + 3 = 13; "julien — foo" = 10 + 1 = 11; "foo" = 10
+  assert.equal(best?.title, "foo [WSL: Ubuntu]");
+});

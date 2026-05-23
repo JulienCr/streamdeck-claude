@@ -8,17 +8,18 @@ export interface TitledWindow {
 
 /**
  * Pick the VS Code window whose title best matches `cwd`, or null if none
- * scores. Matching is title-based and best-effort: VS Code's default window
+ * qualifies. Matching is title-based and best-effort: VS Code's default window
  * title contains the workspace name (`${rootName}`) and a `[WSL: <distro>]`
  * marker, but a user can reshape it via `window.title`, and the active editor
  * filename prefixes it. We therefore score on tokens, not exact strings.
  *
- * Scoring per window:
- *   +10  the cwd basename appears as a token in the title
+ * A window MUST contain the cwd basename as a token to qualify at all.
+ * Among qualifying windows, additional scoring ranks the best match:
+ *   +10  the cwd basename appears as a token in the title  (REQUIRED to qualify)
  *   + N  N additional cwd path components also appear as tokens (tie-break)
  *   + 3  origin is "wsl" and the title carries a [WSL] marker
  *   - 3  origin is "windows" and the title carries a [WSL] marker
- * Highest score wins; ties resolve to the first window; score <= 0 → no match.
+ * Highest score wins; ties resolve to the first window; no basename match → null.
  */
 export function pickBestWindow<W extends TitledWindow>(
   cwd: string,
@@ -34,17 +35,23 @@ export function pickBestWindow<W extends TitledWindow>(
   let bestScore = 0;
   for (const w of windows) {
     const titleTokens = titleTokenSet(w.title);
-    let score = 0;
-    if (titleTokens.has(base)) score += 10;
+    // The basename is the REQUIRED signal — a window only qualifies if its
+    // title carries the cwd's last path component as a token. Path-overlap and
+    // [WSL] bias then only *rank* qualifying windows; they can't manufacture a
+    // match on their own (a stray "dev"/"home" token or a [WSL] marker on an
+    // unrelated window must never win).
+    if (!titleTokens.has(base)) continue;
+    let score = 10;
     for (const t of rest) if (titleTokens.has(t)) score += 1;
     const hasWsl = /\[wsl/i.test(w.title);
     if (hasWsl) score += origin === "wsl" ? 3 : -3;
+    // Strict `>` keeps the first window on a score tie.
     if (score > bestScore) {
       bestScore = score;
       best = w;
     }
   }
-  return bestScore > 0 ? best : null;
+  return best;
 }
 
 /** Lowercased path components of a cwd, both `/` and `\` separated, empties dropped. */
@@ -61,7 +68,7 @@ function titleTokenSet(title: string): Set<string> {
   return new Set(
     title
       .toLowerCase()
-      .split(/[\s/\\—|()[\]]+/)
+      .split(/[\s/\\—|()[\]:]+/)
       .filter(Boolean),
   );
 }
