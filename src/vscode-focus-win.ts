@@ -1,4 +1,3 @@
-import streamDeck from "@elgato/streamdeck";
 import type { SessionOrigin } from "./sessions.js";
 import type { FocusResult } from "./terminal-focus.js";
 import { pickBestWindow } from "./vscode-window-match.js";
@@ -46,7 +45,7 @@ async function enumerateWindows(): Promise<
   const script = `Get-Process Code,'Code - Insiders' -ErrorAction SilentlyContinue |
   Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle } |
   ForEach-Object { "OK\`t$($_.MainWindowHandle.ToInt64())\`t$($_.MainWindowTitle)" }
-Write-Output "OK-END"`;
+Write-Output "OK END"`;
   const r = await runPowerShell(script, 3000);
   if (!r.ok) return { ok: false, error: r.error };
   const windows: WinWindow[] = [];

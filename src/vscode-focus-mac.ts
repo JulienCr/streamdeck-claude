@@ -54,7 +54,10 @@ async function enumerateWindowNames(): Promise<
 
 /** Activate VS Code and AXRaise the window whose name matches exactly. */
 async function raiseWindowByName(name: string): Promise<{ ok: true } | { ok: false; error: string }> {
-  const escaped = name.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  // AppleScript string literals don't honour backslash escapes; embed any
+  // double-quote in the title via the `quote` keyword instead, e.g.
+  // (first window whose name is "foo" & quote & "bar").
+  const escaped = name.replace(/"/g, '" & quote & "');
   const script = `
     tell application "System Events"
       if not (exists process "Code") then return "ERR:not-running"
