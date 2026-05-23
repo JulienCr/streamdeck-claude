@@ -38,6 +38,7 @@ export async function renderAll(
     slotState.clipboardPayload = entry?.session.cwd;
     slotState.sessionId = entry?.session.sessionId;
     slotState.origin = entry?.session.origin;
+    slotState.terminal = entry?.session.terminal;
     if (slotState.lastSvg === dataUrl) continue;
     slotState.lastSvg = dataUrl;
     pending.push(

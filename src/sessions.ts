@@ -3,6 +3,7 @@ import { platform } from "node:os";
 import { join } from "node:path";
 import streamDeck from "@elgato/streamdeck";
 import type { SessionState } from "./icons/index.js";
+import type { TerminalKind } from "./terminal-kind.js";
 import { WIN_SESSIONS_DIR, WSL_SESSIONS_DIR, WSL_SESSIONS_DIR_FROM_WIN } from "./env.js";
 import { parseEventLog, reduceEvents, type DerivedState, type TodoStatus } from "./session-events.js";
 
@@ -76,6 +77,8 @@ export interface SessionInfo {
   /** Snapshot of the last TodoWrite call's statuses; empty if none seen. */
   todos: TodoStatus[];
   origin: SessionOrigin;
+  /** Terminal host (from the event-log SessionStart stamp); drives slot-press focus. */
+  terminal: TerminalKind;
 }
 
 const isPositiveInt = (x: unknown): x is number =>
@@ -114,7 +117,7 @@ async function readOneSource(src: SessionSourceDir): Promise<SessionInfo[]> {
         const status = raw.status === "busy" ? "busy" : "idle";
 
         let derived: DerivedState = {
-          awaiting: false, awaitingPermission: false, awaitingQuestion: false, awaitingPlan: false, errored: false, subagentDepth: 0, todos: [],
+          awaiting: false, awaitingPermission: false, awaitingQuestion: false, awaitingPlan: false, errored: false, subagentDepth: 0, todos: [], terminal: "unknown",
         };
         const eventsPath = join(src.path, `${raw.sessionId}.events.ndjson`);
         try {
@@ -152,6 +155,7 @@ async function readOneSource(src: SessionSourceDir): Promise<SessionInfo[]> {
           subagentActive: derived.subagentDepth > 0,
           todos: derived.todos,
           origin: src.origin,
+          terminal: derived.terminal,
         });
       }),
   );

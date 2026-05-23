@@ -9,6 +9,7 @@ import streamDeck, {
 } from "@elgato/streamdeck";
 import { platform } from "node:os";
 import type { SessionOrigin } from "./sessions.js";
+import type { TerminalKind } from "./terminal-kind.js";
 import { focusWarpTabForCwd } from "./warp-focus.js";
 import { spawnCapture } from "./spawn-capture.js";
 
@@ -25,6 +26,7 @@ export interface SlotState {
   /** Bound session — used by long-press to wipe just this agent's event log. */
   sessionId?: string;
   origin?: SessionOrigin;
+  terminal?: TerminalKind;
 }
 
 @action({ UUID: "com.julien.claudesessions.slot" })
