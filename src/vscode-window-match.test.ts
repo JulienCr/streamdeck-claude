@@ -1,0 +1,45 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { pickBestWindow } from "./vscode-window-match.js";
+
+const win = (title: string) => ({ title });
+
+test("matches a window whose title contains the cwd basename as a token", () => {
+  const best = pickBestWindow("/home/julien/dev/foo", [win("index.ts — foo [WSL: Ubuntu]")], "wsl");
+  assert.equal(best?.title, "index.ts — foo [WSL: Ubuntu]");
+});
+
+test("prefers the window with deeper path-component overlap on a basename tie", () => {
+  const best = pickBestWindow(
+    "/a/b/foo",
+    [win("foo"), win("b — foo")],
+    "windows",
+  );
+  assert.equal(best?.title, "b — foo");
+});
+
+test("WSL-origin sessions prefer windows with a [WSL] marker", () => {
+  const best = pickBestWindow(
+    "/home/u/foo",
+    [win("foo"), win("foo [WSL: Ubuntu]")],
+    "wsl",
+  );
+  assert.equal(best?.title, "foo [WSL: Ubuntu]");
+});
+
+test("windows-origin sessions penalise [WSL] markers", () => {
+  const best = pickBestWindow(
+    "D:\\dev\\foo",
+    [win("foo"), win("foo [WSL: Ubuntu]")],
+    "windows",
+  );
+  assert.equal(best?.title, "foo");
+});
+
+test("returns null when nothing scores above zero", () => {
+  assert.equal(pickBestWindow("/x/bar", [win("foo — baz")], "windows"), null);
+});
+
+test("returns null for an empty window list", () => {
+  assert.equal(pickBestWindow("/x/foo", [], "wsl"), null);
+});
