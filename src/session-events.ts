@@ -79,16 +79,27 @@ function applyEvent(state: ReducerState, ev: SessionEvent): ReducerState {
         ? { ...state, awaitingPermission: true }
         : { ...state, awaiting: true };
 
-    case "PreToolUse":
-      if (ev.tool === "ExitPlanMode") return { ...state, awaitingPlan: true };
-      if (ev.tool === "AskUserQuestion") return { ...state, awaitingQuestion: true };
-      return state;
+    case "PreToolUse": {
+      // Any tool-lifecycle event mid-turn is proof the user resolved a pending
+      // Notification (permission_prompt / elicitation): CC never emits tool
+      // events while genuinely blocked on the user, so resumed tool activity
+      // means it got its answer. Clear those flags here — they have no paired
+      // "resolved" event of their own (unlike ExitPlanMode/AskUserQuestion).
+      // Order is safe: the PreToolUse that *triggers* a permission_prompt fires
+      // BEFORE its Notification, so this never clears the prompt it raises.
+      const next = { ...state, awaiting: false, awaitingPermission: false };
+      if (ev.tool === "ExitPlanMode") return { ...next, awaitingPlan: true };
+      if (ev.tool === "AskUserQuestion") return { ...next, awaitingQuestion: true };
+      return next;
+    }
 
-    case "PostToolUse":
-      if (ev.tool === "ExitPlanMode") return { ...state, awaitingPlan: false };
-      if (ev.tool === "AskUserQuestion") return { ...state, awaitingQuestion: false };
-      if (ev.tool === "TodoWrite" && ev.todos) return { ...state, todos: ev.todos };
-      return state;
+    case "PostToolUse": {
+      const next = { ...state, awaiting: false, awaitingPermission: false };
+      if (ev.tool === "ExitPlanMode") return { ...next, awaitingPlan: false };
+      if (ev.tool === "AskUserQuestion") return { ...next, awaitingQuestion: false };
+      if (ev.tool === "TodoWrite" && ev.todos) return { ...next, todos: ev.todos };
+      return next;
+    }
 
     case "Stop":
       return { ...state, inTurn: false, awaiting: false, awaitingPermission: false, awaitingQuestion: false, awaitingPlan: false };
