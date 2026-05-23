@@ -60,6 +60,9 @@ public class W {
  * CLIXML progress wrapper PS otherwise emits the first time it loads modules —
  * the wrapper would push the "OK" marker off the trailing position callers
  * look for. Success is signalled by a line starting with `OK`.
+ * The full stdout is returned in `out` (not just a boolean) so callers can
+ * thread the trailing trace into their focus-result `reason` for runtime
+ * visibility.
  */
 export async function runPowerShell(
   script: string,

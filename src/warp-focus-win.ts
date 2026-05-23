@@ -27,7 +27,7 @@ import { TYPES_GUARD, runPowerShell } from "./win32-raise.js";
  * Implementation: build a self-contained PowerShell script that
  * Add-Types the user32/kernel32 wrappers, picks the first Warp HWND,
  * does the focus dance, and `SendInput`s the keystroke. Spawn one
- * `powershell.exe -NoProfile -Command -` per call. Per-call PS warmup
+ * `powershell.exe -NoProfile -EncodedCommand` per call. Per-call PS warmup
  * (~150–250 ms) is the dominant cost; the DB read is ~25 ms.
  */
 export async function focusWarpTabOnWin(cwd: string): Promise<WarpFocusResult> {
