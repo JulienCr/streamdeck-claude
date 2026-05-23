@@ -65,7 +65,11 @@ function applyEvent(state: ReducerState, ev: SessionEvent): ReducerState {
       return ZERO;
 
     case "UserPromptSubmit":
-      return { ...state, inTurn: true, awaiting: false, awaitingPermission: false, awaitingQuestion: false, awaitingPlan: false, errored: false };
+      // A fresh turn always starts with zero in-flight subagents. Resetting
+      // subagentDepth here (and at Stop) keeps a missed SubagentStop — a
+      // subagent killed or a hook that didn't fire — from leaking across the
+      // turn boundary and stranding the session on the "subagent" icon.
+      return { ...state, inTurn: true, awaiting: false, awaitingPermission: false, awaitingQuestion: false, awaitingPlan: false, errored: false, subagentDepth: 0 };
 
     case "Notification":
       // Only an in-turn Notification is a real prompt to the user. After Stop,
@@ -102,10 +106,12 @@ function applyEvent(state: ReducerState, ev: SessionEvent): ReducerState {
     }
 
     case "Stop":
-      return { ...state, inTurn: false, awaiting: false, awaitingPermission: false, awaitingQuestion: false, awaitingPlan: false };
+      // A subagent cannot outlive the turn that spawned it, so depth is 0 once
+      // the main turn stops — reset it to absorb any unmatched SubagentStart.
+      return { ...state, inTurn: false, awaiting: false, awaitingPermission: false, awaitingQuestion: false, awaitingPlan: false, subagentDepth: 0 };
 
     case "StopFailure":
-      return { ...state, inTurn: false, awaiting: false, awaitingPermission: false, awaitingQuestion: false, awaitingPlan: false, errored: true };
+      return { ...state, inTurn: false, awaiting: false, awaitingPermission: false, awaitingQuestion: false, awaitingPlan: false, errored: true, subagentDepth: 0 };
 
     case "SubagentStart":
       return { ...state, subagentDepth: state.subagentDepth + 1 };
