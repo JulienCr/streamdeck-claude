@@ -10,7 +10,7 @@ import streamDeck, {
 import { platform } from "node:os";
 import type { SessionOrigin } from "./sessions.js";
 import type { TerminalKind } from "./terminal-kind.js";
-import { focusWarpTabForCwd } from "./warp-focus.js";
+import { focusTerminalForSession } from "./terminal-focus.js";
 import { spawnCapture } from "./spawn-capture.js";
 
 /** Hold a slot key for at least this long to trigger the per-session reset
@@ -103,8 +103,12 @@ export class SlotAction extends SingletonAction {
     }
     try {
       await copyToClipboard(cwd);
-      const res = await focusWarpTabForCwd(cwd);
-      streamDeck.logger.info(`warp focus: ${res.reason} for cwd=${cwd}`);
+      const res = await focusTerminalForSession({
+        cwd,
+        terminal: slot?.terminal ?? "unknown",
+        origin: slot?.origin ?? "wsl",
+      });
+      streamDeck.logger.info(`focus(${slot?.terminal ?? "unknown"}): ${res.reason} for cwd=${cwd}`);
       await ev.action.showOk();
     } catch (err) {
       streamDeck.logger.error("clipboard copy failed", err);
