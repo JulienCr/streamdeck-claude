@@ -6,6 +6,7 @@ import { watchForReload } from "./reload-watcher.js";
 import { createStateTracker } from "./state-tracker.js";
 import { renderAll } from "./render-loop.js";
 import { wipeAllEventLogs, wipeSessionEventLog, type SessionOrigin } from "./sessions.js";
+import { killSession } from "./kill-session.js";
 
 streamDeck.logger.setLevel(LogLevel.DEBUG);
 
@@ -49,7 +50,14 @@ async function resetSlot(sessionId: string, origin: SessionOrigin): Promise<void
   await runSlowTick();
 }
 
-const slotAction = new SlotAction(resetSlot);
+async function killSlot(pid: number, sessionId: string, origin: SessionOrigin): Promise<void> {
+  streamDeck.logger.info(`kill requested for ${origin}/${sessionId} pid=${pid}`);
+  await killSession(pid, origin);
+  // Refresh : l'agent passera "finished" puis disparaîtra au tick suivant.
+  await runSlowTick();
+}
+
+const slotAction = new SlotAction(resetSlot, killSlot);
 const setupAction = new SetupAction(refreshNow);
 
 streamDeck.actions.registerAction(slotAction);
@@ -67,7 +75,7 @@ setInterval(async () => {
   frame = (frame + 1) % ANIMATION_FRAMES;
   // Skip render if nothing on screen needs to change frame-to-frame
   // (no animated motif AND no marquee-overflowing label).
-  if (!tracker.needsAnimation()) {
+  if (!tracker.needsAnimation() && !slotAction.anyKillArming()) {
     animateRunning = false;
     return;
   }

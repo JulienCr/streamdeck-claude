@@ -12,9 +12,11 @@ import type { SessionOrigin } from "./sessions.js";
 import { focusWarpTabForCwd } from "./warp-focus.js";
 import { spawnCapture } from "./spawn-capture.js";
 
-/** Hold a slot key for at least this long to trigger the per-session reset
- *  instead of the default clipboard-copy short press. */
-const LONG_PRESS_MS = 500;
+/** Hold ≥ this long → wipe just this agent's event log (palier 1). */
+export const LONG_PRESS_MS = 500;
+/** Hold ≥ this long → kill the agent process (palier 2). Le wipe à
+ *  LONG_PRESS_MS a déjà eu lieu quand on atteint ce seuil. */
+export const KILL_PRESS_MS = 3000;
 
 /** Per-instance state we render onto each key. */
 export interface SlotState {
@@ -25,6 +27,11 @@ export interface SlotState {
   /** Bound session — used by long-press to wipe just this agent's event log. */
   sessionId?: string;
   origin?: SessionOrigin;
+  /** Bound session pid — required to kill the process on a ≥3s hold. */
+  pid?: number;
+  /** Wall-clock ms du début d'arming (≥LONG_PRESS_MS tenu). undefined = pas en
+   *  arming. Lu par le render-loop pour dessiner l'anneau "KILL". */
+  killArmingSince?: number;
 }
 
 @action({ UUID: "com.julien.claudesessions.slot" })
@@ -36,9 +43,12 @@ export class SlotAction extends SingletonAction {
   /** Armed long-press timers. Presence = key is currently held but threshold
    *  not yet reached. Cleared on KeyUp (short press) or when the timer fires. */
   private readonly pressTimers = new Map<string, NodeJS.Timeout>();
+  /** Armed kill timers (fire at KILL_PRESS_MS). Same lifecycle as pressTimers. */
+  private readonly killTimers = new Map<string, NodeJS.Timeout>();
 
   constructor(
     private readonly resetSlot: (sessionId: string, origin: SessionOrigin) => Promise<void>,
+    private readonly killSlot: (pid: number, sessionId: string, origin: SessionOrigin) => Promise<void>,
   ) {
     super();
   }
@@ -64,32 +74,66 @@ export class SlotAction extends SingletonAction {
       clearTimeout(t);
       this.pressTimers.delete(ev.action.id);
     }
+    const k = this.killTimers.get(ev.action.id);
+    if (k) {
+      clearTimeout(k);
+      this.killTimers.delete(ev.action.id);
+    }
     streamDeck.logger.info(`willDisappear: id=${ev.action.id} total=${this.instances.size}`);
   }
 
   override onKeyDown(ev: KeyDownEvent): void {
     const slot = this.state.get(ev.action.id);
-    if (!slot?.clipboardPayload || !slot.sessionId || !slot.origin) {
-      // Empty slot — keep the existing "nothing to do here" feedback. No timer
-      // armed, so KeyUp will also be a no-op.
+    if (!slot?.clipboardPayload || !slot.sessionId || !slot.origin || slot.pid === undefined) {
+      // Empty slot — keep the "nothing to do here" feedback. No timer armed, so
+      // KeyUp is also a no-op.
       void ev.action.showAlert();
       return;
     }
+    const id = ev.action.id;
     const sessionId = slot.sessionId;
     const origin = slot.origin;
-    const timer = setTimeout(() => {
-      this.pressTimers.delete(ev.action.id);
+    const pid = slot.pid;
+    const wipeTimer = setTimeout(() => {
+      this.pressTimers.delete(id);
+      // Palier 1 atteint : wipe le log ET arme le feedback visuel + la fenêtre kill.
+      slot.killArmingSince = Date.now();
       void this.runLongPress(ev, sessionId, origin);
     }, LONG_PRESS_MS);
-    this.pressTimers.set(ev.action.id, timer);
+    this.pressTimers.set(id, wipeTimer);
+    const killTimer = setTimeout(() => {
+      this.killTimers.delete(id);
+      slot.killArmingSince = undefined;
+      void this.runKill(ev, pid, sessionId, origin);
+    }, KILL_PRESS_MS);
+    this.killTimers.set(id, killTimer);
   }
 
   override async onKeyUp(ev: KeyUpEvent): Promise<void> {
-    const timer = this.pressTimers.get(ev.action.id);
-    if (!timer) return; // long-press already fired, or empty slot
-    clearTimeout(timer);
-    this.pressTimers.delete(ev.action.id);
-    await this.runShortPress(ev);
+    const id = ev.action.id;
+    const wipeTimer = this.pressTimers.get(id);
+    const killTimer = this.killTimers.get(id);
+    if (wipeTimer) {
+      // Relâché avant 500ms → short press (copie + Warp). Annule tout.
+      clearTimeout(wipeTimer);
+      this.pressTimers.delete(id);
+      if (killTimer) {
+        clearTimeout(killTimer);
+        this.killTimers.delete(id);
+      }
+      await this.runShortPress(ev);
+      return;
+    }
+    if (killTimer) {
+      // Relâché entre 500ms et 3s → le wipe a déjà eu lieu. Annule le kill et
+      // l'arming visuel ; le render-loop reprend l'état normal au prochain tick.
+      clearTimeout(killTimer);
+      this.killTimers.delete(id);
+      const slot = this.state.get(id);
+      if (slot) slot.killArmingSince = undefined;
+      return;
+    }
+    // Relâché après 3s → kill déjà fired, no-op.
   }
 
   private async runShortPress(ev: KeyUpEvent): Promise<void> {
@@ -122,6 +166,30 @@ export class SlotAction extends SingletonAction {
       streamDeck.logger.error(`long-press reset failed for ${origin}/${sessionId}`, err);
       await ev.action.showAlert();
     }
+  }
+
+  private async runKill(
+    ev: KeyDownEvent,
+    pid: number,
+    sessionId: string,
+    origin: SessionOrigin,
+  ): Promise<void> {
+    try {
+      await this.killSlot(pid, sessionId, origin);
+      await ev.action.showOk();
+    } catch (err) {
+      streamDeck.logger.error(`kill failed for ${origin}/${sessionId} pid=${pid}`, err);
+      await ev.action.showAlert();
+    }
+  }
+
+  /** True if any visible slot is mid-hold past LONG_PRESS_MS — consumed by the
+   *  animation tick so the progress ring keeps advancing. */
+  anyKillArming(): boolean {
+    for (const s of this.state.values()) {
+      if (s.killArmingSince !== undefined) return true;
+    }
+    return false;
   }
 
   /**
