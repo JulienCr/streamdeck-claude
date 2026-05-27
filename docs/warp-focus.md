@@ -18,7 +18,11 @@ Same on both platforms. For each pane row in the DB, score it against the reques
 - `cwd` is a prefix of `paneCwd` → next
 - shared path components → fallback (token overlap)
 
-The highest-scoring pane wins. If no row scores above zero, the plugin gives up silently — the clipboard copy still happens.
+The highest-scoring pane wins. Ties at the **exact (1000)** and **prefix/parent (500)** levels resolve deterministically to the lowest `(window_id, tab_index)` — i.e. the leftmost matching tab — rather than giving up. (This matters for monorepo subdirs: when a session sits in `…/repo/sub` but Warp hasn't yet flushed that pane's exact cwd, only the parent `…/repo` may be in the DB, open in several tabs; refusing there caused intermittent silent no-ops.) Only pure **token-overlap** ties have no canonical winner and are dropped silently. If nothing scores above zero, the plugin gives up silently — the clipboard copy still happens.
+
+**Tab order is not a concern:** Warp renumbers tab `id`s on every drag-reorder so `id` order always tracks the visual tab strip — `tab_index` (derived from `ROW_NUMBER() OVER (ORDER BY id)`) therefore matches `Cmd+<digit>` positions even after reordering.
+
+**Same dir in two tabs is ambiguous:** Warp exposes no link between an OS process and a pane (no inherited `WARP_SESSION_ID`, no PID in the DB), so cwd is the only join key. When a dir is open in 2+ tabs, the plugin picks the leftmost — it cannot know which one runs *your* session.
 
 Implementation: `src/warp-db.ts` (read + score), `src/warp-focus.ts` (platform dispatcher).
 
@@ -55,5 +59,5 @@ All of the following are silent — clipboard still works, focus is just skipped
 | Warp not running | `db-empty` or `warp-not-running` |
 | `sqlite3` missing (Windows) | `db-read-failed: spawn sqlite3.exe ENOENT` |
 | Accessibility denied (macOS) | `keystroke-failed: …(-1719)` |
-| No matching pane | `no-match (rows=N)` |
+| No matching pane | `no-match (rows=N, top=[w1t2@500:"…", …])` — the `top=` list shows the best-scoring panes + scores to diagnose ties / stale cwds |
 | Multi-window, tab > 9 | succeeds but may target the wrong window — the plugin warns in the log |
