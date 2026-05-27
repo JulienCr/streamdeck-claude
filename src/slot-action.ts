@@ -103,8 +103,12 @@ export class SlotAction extends SingletonAction {
     this.pressTimers.set(id, wipeTimer);
     const killTimer = setTimeout(() => {
       this.killTimers.delete(id);
-      slot.killArmingSince = undefined;
-      void this.runKill(ev, pid, sessionId, origin);
+      // Garde killArmingSince posé pendant le kill pour que l'anneau s'affiche
+      // plein (progress clampé à 1) le temps du SIGTERM, puis le libère — sinon
+      // le dernier frame visible plafonne à ~0.95 avant de disparaître.
+      void this.runKill(ev, pid, sessionId, origin).finally(() => {
+        slot.killArmingSince = undefined;
+      });
     }, KILL_PRESS_MS);
     this.killTimers.set(id, killTimer);
   }
@@ -161,7 +165,11 @@ export class SlotAction extends SingletonAction {
   ): Promise<void> {
     try {
       await this.resetSlot(sessionId, origin);
-      await ev.action.showOk();
+      // Pendant l'armement du kill (cas normal d'un long-press), l'anneau rouge
+      // sert de confirmation : on évite le flash vert showOk qui le masquerait
+      // et laisserait croire que l'action est terminée.
+      const slot = this.state.get(ev.action.id);
+      if (!slot?.killArmingSince) await ev.action.showOk();
     } catch (err) {
       streamDeck.logger.error(`long-press reset failed for ${origin}/${sessionId}`, err);
       await ev.action.showAlert();
