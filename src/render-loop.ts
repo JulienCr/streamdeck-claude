@@ -1,6 +1,7 @@
 import streamDeck from "@elgato/streamdeck";
-import { isAnimated, renderIcon } from "./icons/index.js";
+import { isAnimated, renderIcon, renderKillArming } from "./icons/index.js";
 import type { SlotAction } from "./slot-action.js";
+import { KILL_PRESS_MS, LONG_PRESS_MS } from "./slot-action.js";
 import type { DisplayEntry } from "./state-tracker.js";
 
 /**
@@ -38,6 +39,26 @@ export async function renderAll(
     slotState.clipboardPayload = entry?.session.cwd;
     slotState.sessionId = entry?.session.sessionId;
     slotState.origin = entry?.session.origin;
+    slotState.pid = entry?.session.pid;
+
+    // Hold passé LONG_PRESS_MS : on masque l'état normal par l'anneau "KILL"
+    // tant que la touche reste enfoncée (killArmingSince posé par SlotAction).
+    if (slotState.killArmingSince !== undefined) {
+      const elapsed = Date.now() - slotState.killArmingSince;
+      const progress = Math.max(0, Math.min(1, elapsed / (KILL_PRESS_MS - LONG_PRESS_MS)));
+      const killSvg = renderKillArming({ slot: slotIndex, label, progress });
+      const killUrl = "data:image/svg+xml;base64," + Buffer.from(killSvg, "utf8").toString("base64");
+      if (slotState.lastSvg !== killUrl) {
+        slotState.lastSvg = killUrl;
+        pending.push(
+          action.setImage(killUrl).catch((err) => {
+            streamDeck.logger.error(`setImage(kill) failed for slot ${slotIndex}`, err);
+          }),
+        );
+      }
+      continue;
+    }
+
     if (slotState.lastSvg === dataUrl) continue;
     slotState.lastSvg = dataUrl;
     pending.push(
