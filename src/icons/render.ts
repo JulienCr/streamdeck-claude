@@ -72,6 +72,10 @@ function renderTodoColumn(todos: readonly TodoStatus[], frame: number): string {
   return rects.join("");
 }
 
+function renderSlotBadge(slotText: string, accent: string): string {
+  return `<text x="128" y="22" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="10" font-weight="700" fill="${accent}" opacity="0.8" text-anchor="end">${xmlEscape(slotText)}</text>`;
+}
+
 export function renderIcon({ state, slot, label, frame = 0, now, todos }: IconOptions): string {
   const t = now ?? Date.now();
   const { bg, accent, label: labelColor } = STATES[state].palette;
@@ -118,9 +122,7 @@ export function renderIcon({ state, slot, label, frame = 0, now, todos }: IconOp
     : "";
 
   // Slot number badge — inside the safe zone, away from the rounded corner.
-  const slotBadge = isEmpty
-    ? ""
-    : `<text x="128" y="22" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="10" font-weight="700" fill="${accent}" opacity="0.8" text-anchor="end">${xmlEscape(slotText)}</text>`;
+  const slotBadge = isEmpty ? "" : renderSlotBadge(slotText, accent);
 
   let pulseOverlay = "";
   if (STATES[state].pulseBg) {
@@ -172,12 +174,15 @@ export interface KillArmingOptions {
   label: string;
   /** 0..1 — fraction du hold écoulée entre LONG_PRESS_MS et KILL_PRESS_MS. */
   progress: number;
+  /** Wall-clock ms; used for marquee. Defaults to Date.now() if omitted. */
+  now?: number;
 }
 
 /** Tile rouge avec un anneau de progression + label "KILL", affichée pendant
  *  que l'utilisateur maintient la touche entre 500ms et 3s. À 1.0 l'anneau est
  *  plein → le kill part. Relâcher avant ramène le slot à son état normal. */
-export function renderKillArming({ slot, label, progress }: KillArmingOptions): string {
+export function renderKillArming({ slot, label, progress, now }: KillArmingOptions): string {
+  const t = now ?? Date.now();
   const p = Math.max(0, Math.min(1, progress));
   const cx = 72;
   const cy = 80;
@@ -192,10 +197,10 @@ export function renderKillArming({ slot, label, progress }: KillArmingOptions): 
     fontSize: TOP_FONT,
     weight: "700",
     color: KILL_ACCENT,
-    now: Date.now(),
+    now: t,
     idSuffix: `k${slot}`,
   });
-  const slotBadge = `<text x="128" y="22" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="10" font-weight="700" fill="${KILL_ACCENT}" opacity="0.8" text-anchor="end">${xmlEscape(String(slot))}</text>`;
+  const slotBadge = renderSlotBadge(String(slot), KILL_ACCENT);
   return `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">
 <rect width="144" height="144" fill="${KILL_BG}"/>
 <rect width="144" height="144" fill="${KILL_ACCENT}" opacity="${overlayOpacity}"/>
