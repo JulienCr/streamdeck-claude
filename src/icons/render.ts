@@ -12,7 +12,7 @@ import {
   VIEWPORT_W,
 } from "./theme.js";
 import { approxWidth, splitLabel, textLine, xmlEscape } from "./text.js";
-import { STATES, type SessionState } from "./states.js";
+import { STATES, isBgState, type SessionState } from "./states.js";
 import { ANIMATION_FRAMES } from "./motifs.js";
 import type { TodoStatus } from "../session-events.js";
 
@@ -76,6 +76,11 @@ function renderSlotBadge(slotText: string, accent: string): string {
   return `<text x="128" y="22" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="10" font-weight="700" fill="${accent}" opacity="0.8" text-anchor="end">${xmlEscape(slotText)}</text>`;
 }
 
+function renderBgBadge(accent: string): string {
+  // Coin haut-gauche : 144-128=16 depuis le bord, miroir exact du badge numéro de slot (haut-droite, x=128) → jamais de collision.
+  return `<text x="16" y="22" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="10" font-weight="700" fill="${accent}" opacity="0.8" text-anchor="start">bg</text>`;
+}
+
 export function renderIcon({ state, slot, label, frame = 0, now, todos }: IconOptions): string {
   const t = now ?? Date.now();
   const { bg, accent, label: labelColor } = STATES[state].palette;
@@ -123,6 +128,7 @@ export function renderIcon({ state, slot, label, frame = 0, now, todos }: IconOp
 
   // Slot number badge — inside the safe zone, away from the rounded corner.
   const slotBadge = isEmpty ? "" : renderSlotBadge(slotText, accent);
+  const bgBadge = isBgState(state) ? renderBgBadge(accent) : "";
 
   let pulseOverlay = "";
   if (STATES[state].pulseBg) {
@@ -141,6 +147,7 @@ export function renderIcon({ state, slot, label, frame = 0, now, todos }: IconOp
 ${pulseOverlay}
 <rect x="${BORDER_INSET}" y="${BORDER_INSET}" width="${BORDER_SIZE}" height="${BORDER_SIZE}" rx="${BORDER_RADIUS}" fill="none" stroke="${accent}" stroke-width="${BORDER_STROKE}" stroke-linejoin="round" opacity="${isEmpty ? "0.45" : "0.95"}"/>
 ${slotBadge}
+${bgBadge}
 ${topLine}
 <g transform="translate(0,${MOTIF_DY})">${STATES[state].motif(frame, accent)}</g>
 ${line1Svg}

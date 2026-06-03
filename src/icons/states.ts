@@ -36,7 +36,16 @@ export const STATES = {
   awaiting_plan:       { palette: { bg: "#15102a", accent: "#a78bfa", label: "#ddd6fe" }, animated: true,  pulseBg: true,  motif: planPulse },
   error:         { palette: { bg: "#1a0a0a", accent: "#ef4444", label: "#fecaca" }, animated: true,  pulseBg: true,  motif: errorBolt },
   finished:      { palette: { bg: "#0a1410", accent: "#22c55e", label: "#bbf7d0" }, animated: false, pulseBg: false, motif: finishedCheck },
+  bg_working:             { palette: { bg: "#10131a", accent: "#8b9cff", label: "#c7d2fe" }, animated: true,  pulseBg: false, motif: spinnerArc },
+  // bg_awaiting* partagent la même palette à dessein : états bg basse priorité, le motif seul les distingue.
+  bg_awaiting_permission: { palette: { bg: "#12132e", accent: "#a5b4fc", label: "#ddd6fe" }, animated: true,  pulseBg: true,  motif: permissionPulse },
+  bg_awaiting:            { palette: { bg: "#12132e", accent: "#a5b4fc", label: "#ddd6fe" }, animated: true,  pulseBg: true,  motif: awaitingPulse },
+  bg_idle:                { palette: { bg: "#10131a", accent: "#6b7fd0", label: "#c7d2fe" }, animated: true,  pulseBg: false, motif: clawdIdleLook },
   empty:         { palette: { bg: "#0a0b0e", accent: "#374151", label: "#4b5563" }, animated: false, pulseBg: false, motif: emptyDashed },
 } satisfies Record<string, StateDef>;
 
 export type SessionState = keyof typeof STATES;
+
+/** True for the dedicated background-agent states. The `bg_` prefix is the
+ *  single source of truth — render.ts uses this to draw the "bg" badge. */
+export const isBgState = (s: SessionState): boolean => s.startsWith("bg_");
