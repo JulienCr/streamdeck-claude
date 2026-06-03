@@ -49,6 +49,10 @@ interface RawSession {
   status?: string;
   updatedAt?: number;
   name?: string;
+  /** "interactive" | "bg" (Claude Code 2.1.x). Absent sur les anciennes versions. */
+  kind?: string;
+  /** Pour les bg en attente : ex. "permission prompt". */
+  waitingFor?: string;
 }
 
 export interface SessionInfo {
@@ -76,6 +80,14 @@ export interface SessionInfo {
   /** Snapshot of the last TodoWrite call's statuses; empty if none seen. */
   todos: TodoStatus[];
   origin: SessionOrigin;
+  /** "interactive" par défaut si le json n'a pas de champ `kind`. */
+  kind: "interactive" | "bg";
+  /** Statut brut NON coercé du json pour les bg (ex. "waiting", "running"). undefined pour interactive ; à ne pas confondre avec rawStatus (coercé "busy"|"idle", inutilisé pour les bg). */
+  bgStatus?: string;
+  /** `waitingFor` du json pour les bg (ex. "permission prompt"). */
+  bgWaitingFor?: string;
+  /** mtime logique du json (ms) si le json l'expose. Utilisé pour la liveness des bg (fraîcheur). */
+  updatedAt?: number;
 }
 
 const isPositiveInt = (x: unknown): x is number =>
@@ -112,29 +124,35 @@ async function readOneSource(src: SessionSourceDir): Promise<SessionInfo[]> {
           return;
         }
         const status = raw.status === "busy" ? "busy" : "idle";
+        const kind: "interactive" | "bg" = raw.kind === "bg" ? "bg" : "interactive";
 
         let derived: DerivedState = {
           awaiting: false, awaitingPermission: false, awaitingQuestion: false, awaitingPlan: false, errored: false, subagentDepth: 0, todos: [],
         };
-        const eventsPath = join(src.path, `${raw.sessionId}.events.ndjson`);
-        try {
-          const st = await stat(eventsPath);
-          const cached = eventLogCache.get(eventsPath);
-          if (cached && cached.mtimeMs === st.mtimeMs && cached.size === st.size) {
-            derived = cached.derived;
-          } else {
-            const text = await readFile(eventsPath, "utf8");
-            derived = reduceEvents(parseEventLog(text));
-            eventLogCache.set(eventsPath, { mtimeMs: st.mtimeMs, size: st.size, derived });
+        // Un agent bg tourne en headless et ne nourrit pas le pipeline de hooks :
+        // son json (status/waitingFor) est la source de vérité. On saute donc
+        // entièrement la lecture/réduction de l'event-log pour les bg.
+        if (kind !== "bg") {
+          const eventsPath = join(src.path, `${raw.sessionId}.events.ndjson`);
+          try {
+            const st = await stat(eventsPath);
+            const cached = eventLogCache.get(eventsPath);
+            if (cached && cached.mtimeMs === st.mtimeMs && cached.size === st.size) {
+              derived = cached.derived;
+            } else {
+              const text = await readFile(eventsPath, "utf8");
+              derived = reduceEvents(parseEventLog(text));
+              eventLogCache.set(eventsPath, { mtimeMs: st.mtimeMs, size: st.size, derived });
+            }
+          } catch (err: unknown) {
+            const code = (err as NodeJS.ErrnoException)?.code;
+            if (code !== "ENOENT") {
+              streamDeck.logger.warn(
+                `event-log read failed ${src.origin}/${raw.sessionId}: ${err instanceof Error ? err.message : String(err)}`,
+              );
+            }
+            // no event log yet (ENOENT) — defaults are fine; don't cache
           }
-        } catch (err: unknown) {
-          const code = (err as NodeJS.ErrnoException)?.code;
-          if (code !== "ENOENT") {
-            streamDeck.logger.warn(
-              `event-log read failed ${src.origin}/${raw.sessionId}: ${err instanceof Error ? err.message : String(err)}`,
-            );
-          }
-          // no event log yet (ENOENT) — defaults are fine; don't cache
         }
 
         out.push({
@@ -144,6 +162,10 @@ async function readOneSource(src: SessionSourceDir): Promise<SessionInfo[]> {
           label: raw.name?.trim() || basename(raw.cwd),
           startedAt: typeof raw.startedAt === "number" ? raw.startedAt : 0,
           rawStatus: status,
+          kind,
+          bgStatus: kind === "bg" ? raw.status : undefined,
+          bgWaitingFor: kind === "bg" ? raw.waitingFor : undefined,
+          updatedAt: typeof raw.updatedAt === "number" ? raw.updatedAt : undefined,
           awaiting: derived.awaiting,
           awaitingPermission: derived.awaitingPermission,
           awaitingQuestion: derived.awaitingQuestion,
@@ -237,6 +259,7 @@ export async function wipeAllEventLogs(): Promise<{ wiped: number; errors: strin
  *  Stop are already filtered upstream in reduceEvents via its inTurn guard. */
 export function deriveState(s: SessionInfo, alive: boolean): SessionState {
   if (!alive) return "finished";
+  if (s.kind === "bg") return deriveBgState(s);
   if (s.errored) return "error";
   if (s.awaitingPlan) return "awaiting_plan";
   if (s.awaitingPermission) return "awaiting_permission";
@@ -245,4 +268,17 @@ export function deriveState(s: SessionInfo, alive: boolean): SessionState {
   if (s.rawStatus === "busy" && s.subagentActive) return "subagent";
   if (s.rawStatus === "busy") return "working";
   return "idle";
+}
+
+/** Mappe le json d'un agent bg vers un état bg_*. Table best-effort (un seul
+ *  échantillon connu : status="waiting"/waitingFor="permission prompt") ; tout
+ *  statut non-terminal inconnu retombe sur bg_idle. Les statuts terminaux sont
+ *  déjà filtrés en amont par la liveness (→ finished/retiré), donc absents ici. */
+function deriveBgState(s: SessionInfo): SessionState {
+  const waitingFor = (s.bgWaitingFor ?? "").toLowerCase();
+  if (waitingFor.includes("permission")) return "bg_awaiting_permission";
+  const status = (s.bgStatus ?? "").toLowerCase();
+  if (status === "waiting") return "bg_awaiting";
+  if (status === "busy" || status === "running") return "bg_working";
+  return "bg_idle";
 }
