@@ -40,6 +40,8 @@ export async function renderAll(
     slotState.sessionId = entry?.session.sessionId;
     slotState.origin = entry?.session.origin;
     slotState.pid = entry?.session.pid;
+    // entry undefined (slot vide) → killable=true, sans risque : onKeyDown sort tôt sur un slot vide avant de lire ce flag.
+    slotState.killable = entry?.session.kind !== "bg";
 
     // Hold passé LONG_PRESS_MS : on masque l'état normal par l'anneau "KILL"
     // tant que la touche reste enfoncée (killArmingSince posé par SlotAction).
