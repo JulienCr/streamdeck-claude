@@ -1,5 +1,5 @@
 import streamDeck from "@elgato/streamdeck";
-import { pickBestPane, readWarpPanes } from "./warp-db.js";
+import { describeTopPanes, pickBestPane, readWarpPanes } from "./warp-db.js";
 import type { WarpFocusResult } from "./warp-focus.js";
 import { spawnCapture } from "./spawn-capture.js";
 
@@ -25,7 +25,10 @@ export async function focusWarpTabOnMac(cwd: string): Promise<WarpFocusResult> {
   if (db.snapshot.panes.length === 0) return { matched: false, reason: "db-empty" };
 
   const best = pickBestPane(cwd, db.snapshot.panes);
-  if (!best) return { matched: false, reason: `no-match (rows=${db.snapshot.panes.length})` };
+  if (!best) {
+    const top = describeTopPanes(cwd, db.snapshot.panes);
+    return { matched: false, reason: `no-match (rows=${db.snapshot.panes.length}, top=[${top}])` };
+  }
 
   // Multi-window: we can't reliably target a specific Warp window since AX is
   // empty (no per-window raise). The keystroke goes to whichever Warp window

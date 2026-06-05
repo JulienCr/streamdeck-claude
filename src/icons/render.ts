@@ -12,7 +12,7 @@ import {
   VIEWPORT_W,
 } from "./theme.js";
 import { approxWidth, splitLabel, textLine, xmlEscape } from "./text.js";
-import { STATES, type SessionState } from "./states.js";
+import { STATES, isBgState, type SessionState } from "./states.js";
 import { ANIMATION_FRAMES } from "./motifs.js";
 import type { TodoStatus } from "../session-events.js";
 
@@ -72,6 +72,15 @@ function renderTodoColumn(todos: readonly TodoStatus[], frame: number): string {
   return rects.join("");
 }
 
+function renderSlotBadge(slotText: string, accent: string): string {
+  return `<text x="128" y="22" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="10" font-weight="700" fill="${accent}" opacity="0.8" text-anchor="end">${xmlEscape(slotText)}</text>`;
+}
+
+function renderBgBadge(accent: string): string {
+  // Coin haut-gauche : 144-128=16 depuis le bord, miroir exact du badge numéro de slot (haut-droite, x=128) → jamais de collision.
+  return `<text x="16" y="22" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="10" font-weight="700" fill="${accent}" opacity="0.8" text-anchor="start">bg</text>`;
+}
+
 export function renderIcon({ state, slot, label, frame = 0, now, todos }: IconOptions): string {
   const t = now ?? Date.now();
   const { bg, accent, label: labelColor } = STATES[state].palette;
@@ -118,9 +127,8 @@ export function renderIcon({ state, slot, label, frame = 0, now, todos }: IconOp
     : "";
 
   // Slot number badge — inside the safe zone, away from the rounded corner.
-  const slotBadge = isEmpty
-    ? ""
-    : `<text x="128" y="22" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="10" font-weight="700" fill="${accent}" opacity="0.8" text-anchor="end">${xmlEscape(slotText)}</text>`;
+  const slotBadge = isEmpty ? "" : renderSlotBadge(slotText, accent);
+  const bgBadge = isBgState(state) ? renderBgBadge(accent) : "";
 
   let pulseOverlay = "";
   if (STATES[state].pulseBg) {
@@ -139,6 +147,7 @@ export function renderIcon({ state, slot, label, frame = 0, now, todos }: IconOp
 ${pulseOverlay}
 <rect x="${BORDER_INSET}" y="${BORDER_INSET}" width="${BORDER_SIZE}" height="${BORDER_SIZE}" rx="${BORDER_RADIUS}" fill="none" stroke="${accent}" stroke-width="${BORDER_STROKE}" stroke-linejoin="round" opacity="${isEmpty ? "0.45" : "0.95"}"/>
 ${slotBadge}
+${bgBadge}
 ${topLine}
 <g transform="translate(0,${MOTIF_DY})">${STATES[state].motif(frame, accent)}</g>
 ${line1Svg}
@@ -161,3 +170,52 @@ export function iconNeedsAnimation(state: SessionState, label: string, todos?: r
 
 /** True when the icon's motif uses `frame` (independent of marquee). */
 export const isAnimated = (s: SessionState) => STATES[s].animated;
+
+/** Palette dédiée à l'état "kill en cours d'armement" (hors registre STATES :
+ *  ce n'est pas un SessionState, juste un overlay éphémère pendant le hold). */
+const KILL_BG = "#1a0606";
+const KILL_ACCENT = "#ef4444";
+
+export interface KillArmingOptions {
+  slot: number;
+  label: string;
+  /** 0..1 — fraction du hold écoulée entre LONG_PRESS_MS et KILL_PRESS_MS. */
+  progress: number;
+  /** Wall-clock ms; used for marquee. Defaults to Date.now() if omitted. */
+  now?: number;
+}
+
+/** Tile rouge avec un anneau de progression + label "KILL", affichée pendant
+ *  que l'utilisateur maintient la touche entre 500ms et 3s. À 1.0 l'anneau est
+ *  plein → le kill part. Relâcher avant ramène le slot à son état normal. */
+export function renderKillArming({ slot, label, progress, now }: KillArmingOptions): string {
+  const t = now ?? Date.now();
+  const p = Math.max(0, Math.min(1, progress));
+  const cx = 72;
+  const cy = 80;
+  const r = 28;
+  const circ = 2 * Math.PI * r;
+  const offset = (circ * (1 - p)).toFixed(2);
+  const overlayOpacity = (0.15 + p * 0.45).toFixed(3);
+  const { top } = splitLabel(label);
+  const topLine = textLine({
+    text: top,
+    baseline: TOP_BASELINE,
+    fontSize: TOP_FONT,
+    weight: "700",
+    color: KILL_ACCENT,
+    now: t,
+    idSuffix: `k${slot}`,
+  });
+  const slotBadge = renderSlotBadge(String(slot), KILL_ACCENT);
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">
+<rect width="144" height="144" fill="${KILL_BG}"/>
+<rect width="144" height="144" fill="${KILL_ACCENT}" opacity="${overlayOpacity}"/>
+<rect x="${BORDER_INSET}" y="${BORDER_INSET}" width="${BORDER_SIZE}" height="${BORDER_SIZE}" rx="${BORDER_RADIUS}" fill="none" stroke="${KILL_ACCENT}" stroke-width="${BORDER_STROKE}" stroke-linejoin="round" opacity="0.95"/>
+${slotBadge}
+${topLine}
+<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#3a1414" stroke-width="6"/>
+<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${KILL_ACCENT}" stroke-width="6" stroke-linecap="round" stroke-dasharray="${circ.toFixed(2)}" stroke-dashoffset="${offset}" transform="rotate(-90 ${cx} ${cy})"/>
+<text x="${cx}" y="${cy + 6}" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="17" font-weight="700" fill="${KILL_ACCENT}" text-anchor="middle">KILL</text>
+</svg>`;
+}
