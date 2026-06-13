@@ -1,5 +1,5 @@
 import streamDeck from "@elgato/streamdeck";
-import { pickBestPane, readWarpPanes } from "./warp-db.js";
+import { describeTopPanes, pickBestPane, readWarpPanes } from "./warp-db.js";
 import type { WarpFocusResult } from "./warp-focus.js";
 import { TYPES_GUARD, runPowerShell } from "./win32-raise.js";
 
@@ -36,7 +36,10 @@ export async function focusWarpTabOnWin(cwd: string): Promise<WarpFocusResult> {
   if (db.snapshot.panes.length === 0) return { matched: false, reason: "db-empty" };
 
   const best = pickBestPane(cwd, db.snapshot.panes);
-  if (!best) return { matched: false, reason: `no-match (rows=${db.snapshot.panes.length})` };
+  if (!best) {
+    const top = describeTopPanes(cwd, db.snapshot.panes);
+    return { matched: false, reason: `no-match (rows=${db.snapshot.panes.length}, top=[${top}])` };
+  }
 
   const windowCount = new Set(db.snapshot.panes.map((r) => r.windowId)).size;
 

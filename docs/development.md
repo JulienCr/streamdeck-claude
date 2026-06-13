@@ -19,6 +19,8 @@ There is no test suite and no lint script. Verify a change by running `pnpm buil
 | `pnpm icons:static` | Rasterize manifest PNGs from `assets/svg/` via `@resvg/resvg-js` |
 | `pnpm check:hooks` | Diff installed hooks against `scripts/install-hook.sh` to confirm the registration is current |
 
+The plugin also runs this check at runtime (`src/hook-check.ts`): on startup it logs a warning, and the **Setup key** shows an amber `HOOKS` badge, whenever a required event isn't registered catch-all — so stale config (the classic "permission padlock never clears") surfaces instead of silently producing wrong icons.
+
 Logs land at `%APPDATA%\Elgato\StreamDeck\Plugins\com.julien.claudesessions.sdPlugin\logs\` (Windows) or `~/Library/Logs/ElgatoStreamDeck/com.julien.claudesessions.sdPlugin/` (macOS).
 
 ## Reload flow

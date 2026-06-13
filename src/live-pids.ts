@@ -29,6 +29,22 @@ const cache: Record<SessionOrigin, OriginCache> = {
   windows: { lastLive: new Set(), lastLiveAt: 0 },
 };
 
+/** Un agent bg compte comme vivant tant que son json a été rafraîchi récemment.
+ *  Généreux exprès : un job bg silencieux mais vivant ne doit pas disparaître.
+ *  Tunable. */
+const FRESH_MS = 90_000;
+/** Statuts bg considérés comme terminaux → le job est fini, on le retire.
+ *  Best-effort (cf. spec §6) ; à confirmer en observant d'autres jobs. */
+const TERMINAL_BG_STATUS = new Set(["completed", "failed", "cancelled", "done"]);
+
+/** Liveness d'une session bg, sans toucher au PID (daemon --bg-spare partagé) :
+ *  fraîcheur de updatedAt ET statut non-terminal. */
+function bgAlive(s: SessionInfo, now: number): boolean {
+  if (s.updatedAt == null) return false;
+  if (now - s.updatedAt >= FRESH_MS) return false;
+  return !TERMINAL_BG_STATUS.has((s.bgStatus ?? "").toLowerCase());
+}
+
 async function checkWslLive(pids: number[]): Promise<{ live: Set<number>; error?: string; fromCache: boolean }> {
   if (pids.length === 0) return { live: new Set(), fromCache: false };
   const script = pids.map((p) => `kill -0 ${p} 2>/dev/null && echo ${p}`).join("; ");
@@ -115,8 +131,13 @@ export interface LivenessResult {
 }
 
 export async function filterLiveSessions(sessions: SessionInfo[]): Promise<LivenessResult> {
+  const now = Date.now();
+  // Les bg ne passent pas par le check PID : leur PID est un daemon partagé.
+  // Seules les interactives alimentent les checks wsl/windows.
   const byOrigin: Record<SessionOrigin, number[]> = { wsl: [], windows: [] };
-  for (const s of sessions) byOrigin[s.origin].push(s.pid);
+  for (const s of sessions) {
+    if (s.kind !== "bg") byOrigin[s.origin].push(s.pid);
+  }
 
   const [wslRes, winRes] = await Promise.all([
     checkWslLive(byOrigin.wsl),
@@ -125,6 +146,10 @@ export async function filterLiveSessions(sessions: SessionInfo[]): Promise<Liven
 
   const live = new Set<string>();
   for (const s of sessions) {
+    if (s.kind === "bg") {
+      if (bgAlive(s, now)) live.add(s.sessionId);
+      continue;
+    }
     const livePids = s.origin === "wsl" ? wslRes.live : winRes.live;
     if (livePids.has(s.pid)) live.add(s.sessionId);
   }

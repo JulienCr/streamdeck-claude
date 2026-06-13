@@ -32,7 +32,7 @@ Each running `claude` CLI session lights up one key on your deck — project nam
     a specific integrated-terminal tab. See [`docs/vscode-focus.md`](docs/vscode-focus.md).
   If no match is found, the clipboard copy still happens so you can paste the path.
 - **Long-press (≥500 ms) → reset that session's state log** — useful if a stuck `awaiting` lingers.
-- **Setup key** — wipes all event logs and re-renders every slot in one press.
+- **Setup key** — wipes all event logs and re-renders every slot in one press. Also self-checks the hook registration: if it's stale or missing (icons would silently break — e.g. a permission padlock that never clears), the key shows an amber **HOOKS** warning. Fix with `pnpm install:hook`, then reload.
 
 ## Compatibility
 

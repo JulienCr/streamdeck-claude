@@ -198,16 +198,7 @@ export function pickBestPane(
   if (!target) return null;
   const targetTokens = tokenize(target);
 
-  const scored = rows.map((r) => {
-    const p = normalize(r.paneCwd);
-    let score = 0;
-    if (p === target) score = 1000; // exact match wins outright
-    else if (p.startsWith(target + "/") || target.startsWith(p + "/")) score = 500;
-    else {
-      for (const tok of tokenize(p)) if (targetTokens.has(tok)) score++;
-    }
-    return { row: r, score };
-  });
+  const scored = rows.map((r) => ({ row: r, score: scorePane(target, targetTokens, r.paneCwd) }));
 
   let top = { score: 0, row: null as WarpPaneRow | null };
   let tied = false;
@@ -218,17 +209,18 @@ export function pickBestPane(
     } else if (s.score === top.score && s.score > 0 && top.row) {
       const sameTab = s.row.windowId === top.row.windowId && s.row.tabIndex === top.row.tabIndex;
       if (sameTab) continue;
-      // Exact matches (score 1000) are unambiguously correct — when the
-      // same cwd resolves to multiple tabs (e.g. Warp stores both a UNC
-      // form and a drive-aliased form pointing at the same WSL dir, or
-      // the user genuinely has the same dir open in two tabs), we pick
-      // the lowest (windowId, tabIndex) deterministically rather than
-      // refusing. "Lowest" = oldest tab in the lowest-id window, since
-      // Warp orders tabs by monotonic id within each window — so re-opens
-      // of the same dir consistently land on the original tab. Lower
-      // scores keep the strict tie-break — token overlap ties have no
-      // canonical winner.
-      if (s.score >= 1000) {
+      // Exact (1000) and prefix/parent (500) matches are strong, unambiguous
+      // signals: when the same cwd (or its parent) resolves to multiple tabs
+      // — the user has the dir open in two tabs, or (common with monorepo
+      // subdirs) Warp hasn't yet flushed the exact pane cwd so only the parent
+      // dir is in the DB and several tabs sit on it — we pick the lowest
+      // (windowId, tabIndex) deterministically rather than refusing. "Lowest"
+      // = leftmost tab in the lowest-id window, since Warp renumbers tab ids
+      // to track visual order, so re-opens of the same dir consistently land
+      // on the leftmost tab. Refusing here was the cause of intermittent
+      // "no-match" silent no-ops for subdir sessions. Only token-overlap ties
+      // (< 500) keep the strict tie-break — they have no canonical winner.
+      if (s.score >= 500) {
         const better =
           s.row.windowId < top.row.windowId ||
           (s.row.windowId === top.row.windowId && s.row.tabIndex < top.row.tabIndex);
@@ -240,6 +232,35 @@ export function pickBestPane(
   }
   if (!top.row || top.score === 0 || tied) return null;
   return { windowId: top.row.windowId, tabIndex: top.row.tabIndex, score: top.score, paneCwd: top.row.paneCwd };
+}
+
+/**
+ * Score one pane's cwd against an already-normalized target + its tokens:
+ *   1000 exact, 500 prefix/parent, else count of shared path tokens.
+ */
+function scorePane(target: string, targetTokens: Set<string>, paneCwd: string): number {
+  const p = normalize(paneCwd);
+  if (p === target) return 1000;
+  if (p.startsWith(target + "/") || target.startsWith(p + "/")) return 500;
+  let score = 0;
+  for (const tok of tokenize(p)) if (targetTokens.has(tok)) score++;
+  return score;
+}
+
+/**
+ * Short human-readable summary of the top-scoring panes for `cwd`, for logging
+ * on a no-match (helps diagnose ties / stale cwds without dumping the whole DB).
+ */
+export function describeTopPanes(cwd: string, rows: WarpPaneRow[], limit = 3): string {
+  const target = normalize(cwd);
+  if (!target) return "no-target";
+  const targetTokens = tokenize(target);
+  return rows
+    .map((r) => ({ r, score: scorePane(target, targetTokens, r.paneCwd) }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map(({ r, score }) => `w${r.windowId}t${r.tabIndex}@${score}:"${r.paneCwd}"`)
+    .join(", ");
 }
 
 function normalize(p: string): string {

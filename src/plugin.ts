@@ -6,6 +6,8 @@ import { watchForReload } from "./reload-watcher.js";
 import { createStateTracker } from "./state-tracker.js";
 import { renderAll } from "./render-loop.js";
 import { wipeAllEventLogs, wipeSessionEventLog, type SessionOrigin } from "./sessions.js";
+import { killSession } from "./kill-session.js";
+import { checkHooks, HOOK_FIX_HINT } from "./hook-check.js";
 
 streamDeck.logger.setLevel(LogLevel.DEBUG);
 
@@ -49,7 +51,14 @@ async function resetSlot(sessionId: string, origin: SessionOrigin): Promise<void
   await runSlowTick();
 }
 
-const slotAction = new SlotAction(resetSlot);
+async function killSlot(pid: number, sessionId: string, origin: SessionOrigin): Promise<void> {
+  streamDeck.logger.info(`kill requested for ${origin}/${sessionId} pid=${pid}`);
+  await killSession(pid, origin);
+  // Refresh : l'agent passera "finished" puis disparaîtra au tick suivant.
+  await runSlowTick();
+}
+
+const slotAction = new SlotAction(resetSlot, killSlot);
 const setupAction = new SetupAction(refreshNow);
 
 streamDeck.actions.registerAction(slotAction);
@@ -67,7 +76,7 @@ setInterval(async () => {
   frame = (frame + 1) % ANIMATION_FRAMES;
   // Skip render if nothing on screen needs to change frame-to-frame
   // (no animated motif AND no marquee-overflowing label).
-  if (!tracker.needsAnimation()) {
+  if (!tracker.needsAnimation() && !slotAction.anyKillArming()) {
     animateRunning = false;
     return;
   }
@@ -81,3 +90,14 @@ setInterval(async () => {
 }, ANIMATION_MS);
 
 streamDeck.logger.info(`claude-sessions plugin started, polling=${POLL_MS}ms anim=${ANIMATION_MS}ms`);
+
+// Surface stale/missing hook registration loudly — otherwise the plugin runs
+// fine but renders wrong icons (e.g. a permission padlock that never clears
+// because PostToolUse isn't catch-all). The Setup key also badges this.
+checkHooks().then(({ ok, problems }) => {
+  if (!ok) {
+    streamDeck.logger.warn(`hook config check failed — ${HOOK_FIX_HINT}\n  ${problems.join("\n  ")}`);
+  }
+}).catch((err) => {
+  streamDeck.logger.warn(`hook config check threw: ${err instanceof Error ? err.message : String(err)}`);
+});
