@@ -7,7 +7,7 @@
 [![Node](https://img.shields.io/badge/node-%E2%89%A520-339933.svg)](https://nodejs.org)
 [![Stream Deck](https://img.shields.io/badge/Stream%20Deck-%E2%89%A56.5-black.svg)](https://www.elgato.com/stream-deck)
 
-Each running `claude` CLI session lights up one key on your deck — project name, current state, animated when it's working, pulsing when it needs you. Press a key to copy the session's `cwd` to your clipboard and (on macOS / Windows) jump straight to the matching [Warp](https://www.warp.dev) tab.
+Each running `claude` CLI session lights up one key on your deck — project name, current state, animated when it's working, pulsing when it needs you. Press a key to copy the session's `cwd` to your clipboard and, when possible, bring its terminal to the foreground.
 
 ## State gallery
 
@@ -25,8 +25,12 @@ Each running `claude` CLI session lights up one key on your deck — project nam
 ## Features
 
 - **Live per-session state** — sessions auto-fill the slots in start-time order; excess sessions beyond the slot count are simply not displayed.
-- **Press → copy `cwd`** to clipboard.
-- **Press → focus matching Warp tab** (macOS + Windows). See [`docs/warp-focus.md`](docs/warp-focus.md).
+- **Press → copy `cwd`** to clipboard and, when possible, bring the terminal to the foreground:
+  - **Warp** — focuses the matching Warp tab (macOS and Windows). See [`docs/warp-focus.md`](docs/warp-focus.md).
+  - **VS Code** — raises the VS Code window whose workspace matches the session
+    (WSL-remote or native; macOS and Windows). Window-level only — it can't pick
+    a specific integrated-terminal tab. See [`docs/vscode-focus.md`](docs/vscode-focus.md).
+  If no match is found, the clipboard copy still happens so you can paste the path.
 - **Long-press (≥500 ms) → reset that session's state log** — useful if a stuck `awaiting` lingers.
 - **Setup key** — wipes all event logs and re-renders every slot in one press. Also self-checks the hook registration: if it's stale or missing (icons would silently break — e.g. a permission padlock that never clears), the key shows an amber **HOOKS** warning. Fix with `pnpm install:hook`, then reload.
 
@@ -38,7 +42,7 @@ Each running `claude` CLI session lights up one key on your deck — project nam
 | **Claude CLI host** | macOS, Linux, WSL, Windows-native — sessions on any of these show up |
 | **Stream Deck app on Linux** | Not supported — Elgato doesn't ship a Linux app |
 | **Node.js** | ≥ 20 (bundled into the plugin runtime by the Stream Deck app) |
-| **Terminal integration** | Warp tab focus on macOS + Windows; clipboard copy works with any terminal |
+| **Terminal integration** | Warp tab focus + VS Code window raise on macOS + Windows; clipboard copy works with any terminal |
 
 ## Install
 
@@ -55,7 +59,7 @@ pnpm sd:validate
 # Quit + relaunch the Stream Deck app so it picks up the new plugin.
 ```
 
-For Warp tab focus, macOS will prompt to allow Stream Deck under *System Settings → Privacy & Security → Accessibility* on the first key press. Decline and the focus is silently skipped — clipboard copy still works.
+For Warp tab focus and VS Code window raise, macOS will prompt to allow Stream Deck under *System Settings → Privacy & Security → Accessibility* on the first key press. Decline and the focus is silently skipped — clipboard copy still works.
 
 ### WSL + Windows
 
@@ -97,6 +101,7 @@ Logs land at `%APPDATA%\Elgato\StreamDeck\Plugins\com.julien.claudesessions.sdPl
 - [`docs/architecture.md`](docs/architecture.md) — session discovery, hook event → state machine, path/UNC resolution, render pipeline
 - [`docs/development.md`](docs/development.md) — full pnpm scripts, end-to-end verification, tweaks
 - [`docs/warp-focus.md`](docs/warp-focus.md) — Warp focus internals, per-OS quirks, failure modes
+- [`docs/vscode-focus.md`](docs/vscode-focus.md) — VS Code window focus, matching algorithm, failure modes
 
 ## License
 

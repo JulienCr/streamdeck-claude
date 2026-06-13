@@ -1,7 +1,7 @@
 import streamDeck from "@elgato/streamdeck";
 import { describeTopPanes, pickBestPane, readWarpPanes } from "./warp-db.js";
 import type { WarpFocusResult } from "./warp-focus.js";
-import { spawnCapture } from "./spawn-capture.js";
+import { TYPES_GUARD, runPowerShell } from "./win32-raise.js";
 
 /**
  * Best-effort focus of the Warp tab corresponding to `cwd` on Windows.
@@ -27,7 +27,7 @@ import { spawnCapture } from "./spawn-capture.js";
  * Implementation: build a self-contained PowerShell script that
  * Add-Types the user32/kernel32 wrappers, picks the first Warp HWND,
  * does the focus dance, and `SendInput`s the keystroke. Spawn one
- * `powershell.exe -NoProfile -Command -` per call. Per-call PS warmup
+ * `powershell.exe -NoProfile -EncodedCommand` per call. Per-call PS warmup
  * (~150–250 ms) is the dominant cost; the DB read is ~25 ms.
  */
 export async function focusWarpTabOnWin(cwd: string): Promise<WarpFocusResult> {
@@ -135,87 +135,4 @@ Start-Sleep -Milliseconds 30
 if ($attached) { [W]::AttachThreadInput($fg, $cur, $false) | Out-Null }
 Write-Output ("OK attach={0} sfw={1} fgWasWarp={2} h={3} fgNow={4}" -f $attached, $sfw, ($fgNow -eq $h), $h, $fgNow)
 `;
-}
-
-/**
- * Add-Type bundle. The guard skips re-Adding when run twice in the same
- * PS host (irrelevant here since each call spawns a fresh process, but
- * cheap insurance if we ever switch to a persistent host).
- *
- * `INPUT` is laid out as a tagged union: the union starts at offset 0
- * inside `InputUnion` (LayoutKind.Explicit), and the outer struct is
- * Sequential so the type discriminator + union alignment match
- * `sizeof(INPUT)` (40 bytes on x64, 28 on x86 — `Marshal.SizeOf`
- * handles both). `MOUSEINPUT` is wider than `KEYBDINPUT`, so it has to
- * be declared even though we only set the keyboard variant.
- */
-const TYPES_GUARD = `if (-not ('W' -as [type])) {
-Add-Type @'
-using System;
-using System.Runtime.InteropServices;
-public class W {
-  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
-  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int n);
-  [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr h);
-  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
-  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
-  [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint t1, uint t2, bool attach);
-  [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
-  [StructLayout(LayoutKind.Sequential)]
-  public struct MOUSEINPUT { public int dx, dy; public uint mouseData, dwFlags, time; public IntPtr dwExtraInfo; }
-  [StructLayout(LayoutKind.Sequential)]
-  public struct KEYBDINPUT { public ushort wVk, wScan; public uint dwFlags, time; public IntPtr dwExtraInfo; }
-  [StructLayout(LayoutKind.Explicit)]
-  public struct InputUnion {
-    [FieldOffset(0)] public MOUSEINPUT mi;
-    [FieldOffset(0)] public KEYBDINPUT ki;
-  }
-  [StructLayout(LayoutKind.Sequential)]
-  public struct INPUT { public uint type; public InputUnion u; }
-  [DllImport("user32.dll", SetLastError=true)]
-  public static extern uint SendInput(uint n, INPUT[] inputs, int cb);
-  public static void CtrlVk(ushort vk) {
-    INPUT[] arr = new INPUT[4];
-    arr[0].type = 1; arr[0].u.ki.wVk = 0x11;
-    arr[1].type = 1; arr[1].u.ki.wVk = vk;
-    arr[2].type = 1; arr[2].u.ki.wVk = vk;    arr[2].u.ki.dwFlags = 2;
-    arr[3].type = 1; arr[3].u.ki.wVk = 0x11;  arr[3].u.ki.dwFlags = 2;
-    SendInput((uint)arr.Length, arr, Marshal.SizeOf(typeof(INPUT)));
-  }
-}
-'@
-}`;
-
-async function runPowerShell(
-  script: string,
-  timeoutMs: number,
-): Promise<{ ok: true; out: string } | { ok: false; error: string }> {
-  // We pass the script through `-EncodedCommand` (base64 of UTF-16-LE) rather
-  // than `-Command -` via stdin. Stdin mode trips up the parser on multi-line
-  // here-strings (the Add-Type block above), silently swallowing the script
-  // without executing it. EncodedCommand sidesteps all quoting/parsing.
-  //
-  // `-OutputFormat Text` + `$ProgressPreference=SilentlyContinue` together
-  // suppress the CLIXML progress wrapper that `-NonInteractive` otherwise
-  // emits the first time PS loads modules — the wrapper would push the "OK"
-  // marker off the trailing position our check looks for.
-  const wrapped = "$ProgressPreference = 'SilentlyContinue'\n" + script;
-  const encoded = Buffer.from(wrapped, "utf16le").toString("base64");
-
-  const r = await spawnCapture(
-    "powershell.exe",
-    ["-NoProfile", "-NonInteractive", "-OutputFormat", "Text", "-EncodedCommand", encoded],
-    { timeoutMs },
-  );
-  if (r.timedOut) return { ok: false, error: "timeout" };
-  if (r.err) return { ok: false, error: `spawn: ${r.err}` };
-  const out = r.stdout.trim();
-  const err = r.stderr.trim();
-  if (r.code !== 0) return { ok: false, error: err || out || `exit-${r.code}` };
-  if (out.includes("ERROR:")) return { ok: false, error: out };
-  // Success line is `OK <trace…>` so we anchor at the start; the trace tail
-  // is preserved in `out` and forwarded into the focus-result reason for
-  // runtime visibility.
-  if (/^OK(\s|$)/m.test(out)) return { ok: true, out };
-  return { ok: false, error: err ? `stderr: ${err}` : `no-OK-marker: ${out || "(empty)"}` };
 }

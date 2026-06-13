@@ -9,7 +9,8 @@ import streamDeck, {
 } from "@elgato/streamdeck";
 import { platform } from "node:os";
 import type { SessionOrigin } from "./sessions.js";
-import { focusWarpTabForCwd } from "./warp-focus.js";
+import type { TerminalKind } from "./terminal-kind.js";
+import { focusTerminalForSession } from "./terminal-focus.js";
 import { spawnCapture } from "./spawn-capture.js";
 
 /** Hold ≥ this long → wipe just this agent's event log (palier 1). */
@@ -27,6 +28,8 @@ export interface SlotState {
   /** Bound session — used by long-press to wipe just this agent's event log. */
   sessionId?: string;
   origin?: SessionOrigin;
+  /** Terminal host of the bound session — drives slot-press focus dispatch. */
+  terminal?: TerminalKind;
   /** Bound session pid — required to kill the process on a ≥3s hold. */
   pid?: number;
   /** Wall-clock ms du début d'arming (≥LONG_PRESS_MS tenu). undefined = pas en
@@ -159,8 +162,12 @@ export class SlotAction extends SingletonAction {
     }
     try {
       await copyToClipboard(cwd);
-      const res = await focusWarpTabForCwd(cwd);
-      streamDeck.logger.info(`warp focus: ${res.reason} for cwd=${cwd}`);
+      const res = await focusTerminalForSession({
+        cwd,
+        terminal: slot?.terminal ?? "unknown",
+        origin: slot?.origin ?? "wsl",
+      });
+      streamDeck.logger.info(`focus(${slot?.terminal ?? "unknown"}): ${res.reason} for cwd=${cwd}`);
       await ev.action.showOk();
     } catch (err) {
       streamDeck.logger.error("clipboard copy failed", err);

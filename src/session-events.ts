@@ -4,6 +4,8 @@
  *  no mtime heuristics, no per-state sidecar files, no race conditions between
  *  drop/rm pairs. Adding a new state = one case in `applyEvent`. */
 
+import { normaliseTerm, type TerminalKind } from "./terminal-kind.js";
+
 export type TodoStatus = "pending" | "in_progress" | "completed";
 const VALID_TODO_STATUS: ReadonlySet<TodoStatus> = new Set(["pending", "in_progress", "completed"]);
 
@@ -17,6 +19,8 @@ export interface SessionEvent {
   notifType?: string;
   /** Present only for PostToolUse[TodoWrite] — snapshot of the new list's statuses. */
   todos?: TodoStatus[];
+  /** Terminal host, present only on the SessionStart line. */
+  term?: string;
 }
 
 /** What the icon needs, derived from the event log. The session's busy/idle
@@ -37,6 +41,8 @@ export interface DerivedState {
   subagentDepth: number;
   /** Most recent TodoWrite snapshot; empty until the agent calls TodoWrite. */
   todos: TodoStatus[];
+  /** Which terminal hosts this session (from the SessionStart hook stamp). */
+  terminal: TerminalKind;
 }
 
 /** Internal accumulator: same as DerivedState plus `inTurn`, which is true
@@ -48,7 +54,7 @@ interface ReducerState extends DerivedState {
   inTurn: boolean;
 }
 
-const ZERO: ReducerState = { awaiting: false, awaitingPermission: false, awaitingQuestion: false, awaitingPlan: false, errored: false, subagentDepth: 0, todos: [], inTurn: false };
+const ZERO: ReducerState = { awaiting: false, awaitingPermission: false, awaitingQuestion: false, awaitingPlan: false, errored: false, subagentDepth: 0, todos: [], terminal: "unknown", inTurn: false };
 
 export function reduceEvents(events: readonly SessionEvent[]): DerivedState {
   let state = ZERO;
@@ -61,6 +67,8 @@ export function reduceEvents(events: readonly SessionEvent[]): DerivedState {
 function applyEvent(state: ReducerState, ev: SessionEvent): ReducerState {
   switch (ev.event) {
     case "SessionStart":
+      return { ...ZERO, terminal: normaliseTerm(ev.term) };
+
     case "SessionEnd":
       return ZERO;
 
@@ -144,6 +152,7 @@ export function parseEventLog(text: string): SessionEvent[] {
           tool: typeof obj.tool === "string" ? obj.tool : undefined,
           notifType: typeof obj.notifType === "string" ? obj.notifType : undefined,
           todos,
+          term: typeof obj.term === "string" ? obj.term : undefined,
         });
       }
     } catch {
