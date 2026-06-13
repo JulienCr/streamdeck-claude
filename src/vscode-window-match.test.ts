@@ -52,6 +52,24 @@ test("a rest-component match without the basename does not qualify", () => {
   assert.equal(pickBestWindow("/home/dev/foo", [win("dev — bar")], "windows"), null);
 });
 
+test("matches a workspace folder whose name contains spaces", () => {
+  // base component "My Project" must tokenize the same way the title does,
+  // otherwise an unsplittable "my project" token could never match.
+  const best = pickBestWindow(
+    "/Users/me/My Project",
+    [win("editor.ts — My Project")],
+    "windows",
+  );
+  assert.equal(best?.title, "editor.ts — My Project");
+});
+
+test("requires every basename word — a partial folder-name match does not qualify", () => {
+  assert.equal(
+    pickBestWindow("/Users/me/My Project", [win("My — something else")], "windows"),
+    null,
+  );
+});
+
 test("among several qualifying windows the highest score wins", () => {
   const best = pickBestWindow(
     "/home/julien/dev/foo",
