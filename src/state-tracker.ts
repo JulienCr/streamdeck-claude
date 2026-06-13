@@ -2,6 +2,7 @@ import streamDeck from "@elgato/streamdeck";
 import { iconNeedsAnimation, type SessionState } from "./icons/index.js";
 import {
   deriveState,
+  pruneDeadSessions,
   readAllSessions,
   SESSION_SOURCES,
   lastReadError,
@@ -78,6 +79,13 @@ export function createStateTracker() {
       }
     }
     prevLiveIds = liveIds;
+
+    // Delete dead-process session files so the source dir stays bounded — left
+    // unchecked they pile up (months of <pid>.json) and every one gets re-stat'd
+    // each tick over the slow UNC. Snapshots for the finished-TTL carry-over are
+    // already held in recentlyFinished, so removing the file here is safe.
+    const pruned = await pruneDeadSessions(sessions, live, Date.now());
+    if (pruned > 0) streamDeck.logger.info(`pruned ${pruned} dead session file(s)`);
 
     cachedEntries = [...liveEntries, ...recentlyFinished.values()].sort(
       (a, b) => a.session.startedAt - b.session.startedAt,
