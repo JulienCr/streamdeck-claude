@@ -41,6 +41,17 @@ interface EventLogCacheEntry {
 }
 const eventLogCache = new Map<string, EventLogCacheEntry>();
 
+/** Cache of parsed <pid>.json keyed by full path, gated on (mtimeMs, size) so a
+ *  session file unchanged since last tick skips the readFile + JSON.parse — each
+ *  read is a round-trip over the slow `\\wsl.localhost\` UNC, and an idle session
+ *  doesn't rewrite its json. Only validated sessions are cached. */
+interface JsonCacheEntry {
+  mtimeMs: number;
+  size: number;
+  raw: RawSession;
+}
+const jsonCache = new Map<string, JsonCacheEntry>();
+
 interface RawSession {
   pid: number;
   sessionId: string;
@@ -116,11 +127,19 @@ async function readOneSource(src: SessionSourceDir): Promise<SessionInfo[]> {
         const path = join(src.path, f);
         let raw: RawSession;
         try {
-          raw = JSON.parse(await readFile(path, "utf8"));
+          const st = await stat(path);
+          const cached = jsonCache.get(path);
+          if (cached && cached.mtimeMs === st.mtimeMs && cached.size === st.size) {
+            raw = cached.raw;
+          } else {
+            const parsed = JSON.parse(await readFile(path, "utf8")) as RawSession;
+            if (!isPositiveInt(parsed.pid) || typeof parsed.sessionId !== "string" || typeof parsed.cwd !== "string") {
+              return;
+            }
+            jsonCache.set(path, { mtimeMs: st.mtimeMs, size: st.size, raw: parsed });
+            raw = parsed;
+          }
         } catch {
-          return;
-        }
-        if (!isPositiveInt(raw.pid) || typeof raw.sessionId !== "string" || typeof raw.cwd !== "string") {
           return;
         }
         const status = raw.status === "busy" ? "busy" : "idle";
@@ -187,16 +206,73 @@ export async function readAllSessions(): Promise<SessionInfo[]> {
   const results = await Promise.all(SESSION_SOURCES.map(readOneSource));
   const sessions = results.flat();
   // Prune cache entries whose session is gone (SessionEnd unlinked the log, or
-  // the .json disappeared) so the map stays bounded by live-session count.
-  const expected = new Set<string>();
+  // the .json disappeared) so the maps stay bounded by live-session count.
+  const expectedLogs = new Set<string>();
+  const expectedJson = new Set<string>();
   for (const s of sessions) {
     const src = SESSION_SOURCES.find((d) => d.origin === s.origin);
-    if (src) expected.add(join(src.path, `${s.sessionId}.events.ndjson`));
+    if (!src) continue;
+    expectedLogs.add(join(src.path, `${s.sessionId}.events.ndjson`));
+    expectedJson.add(join(src.path, `${s.pid}.json`));
   }
   for (const key of eventLogCache.keys()) {
-    if (!expected.has(key)) eventLogCache.delete(key);
+    if (!expectedLogs.has(key)) eventLogCache.delete(key);
+  }
+  for (const key of jsonCache.keys()) {
+    if (!expectedJson.has(key)) jsonCache.delete(key);
   }
   return sessions;
+}
+
+/** Grace before a confirmed-dead session's <pid>.json is deleted. A dead file
+ *  never changes yet pre-prune was re-read every tick over the slow UNC; we wait
+ *  this long past the last write so we never race a session that just dropped its
+ *  json but whose first liveness probe flaked (or one shown briefly as finished). */
+const PRUNE_GRACE_MS = 60_000;
+
+/** Deletes the on-disk <pid>.json (and its now-orphan <sid>.events.ndjson) for
+ *  every interactive session whose process is no longer live and whose file is
+ *  older than PRUNE_GRACE_MS, bounding `~/.claude/sessions/` to live + just-died
+ *  sessions instead of letting dead files pile up unread-but-re-stat'd forever.
+ *  bg sessions are skipped: their PID is a shared daemon, so the file↔process
+ *  mapping the rest of this assumes doesn't hold. Best-effort — every unlink
+ *  error is swallowed and simply retried next tick. Returns the count removed. */
+export async function pruneDeadSessions(
+  sessions: SessionInfo[],
+  liveIds: Set<string>,
+  now: number,
+): Promise<number> {
+  let pruned = 0;
+  await Promise.all(
+    sessions
+      .filter((s) => s.kind !== "bg" && !liveIds.has(s.sessionId))
+      .map(async (s) => {
+        const src = SESSION_SOURCES.find((d) => d.origin === s.origin);
+        if (!src) return;
+        const jsonPath = join(src.path, `${s.pid}.json`);
+        try {
+          const st = await stat(jsonPath);
+          if (now - st.mtimeMs < PRUNE_GRACE_MS) return; // too fresh to be sure it's dead junk
+        } catch {
+          return; // already gone or unreadable
+        }
+        try {
+          await unlink(jsonPath);
+          pruned++;
+        } catch {
+          return; // lost a race / no permission — leave the orphan log, retry next tick
+        }
+        const eventsPath = join(src.path, `${s.sessionId}.events.ndjson`);
+        try {
+          await unlink(eventsPath);
+        } catch {
+          /* ENOENT or already gone — fine */
+        }
+        jsonCache.delete(jsonPath);
+        eventLogCache.delete(eventsPath);
+      }),
+  );
+  return pruned;
 }
 
 /** Unlinks one `<sid>.events.ndjson` from the source dir matching `origin`.
