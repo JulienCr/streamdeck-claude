@@ -7,6 +7,7 @@ import { createStateTracker } from "./state-tracker.js";
 import { renderAll } from "./render-loop.js";
 import { wipeAllEventLogs, wipeSessionEventLog, type SessionOrigin } from "./sessions.js";
 import { killSession } from "./kill-session.js";
+import { checkHooks, HOOK_FIX_HINT } from "./hook-check.js";
 
 streamDeck.logger.setLevel(LogLevel.DEBUG);
 
@@ -89,3 +90,14 @@ setInterval(async () => {
 }, ANIMATION_MS);
 
 streamDeck.logger.info(`claude-sessions plugin started, polling=${POLL_MS}ms anim=${ANIMATION_MS}ms`);
+
+// Surface stale/missing hook registration loudly — otherwise the plugin runs
+// fine but renders wrong icons (e.g. a permission padlock that never clears
+// because PostToolUse isn't catch-all). The Setup key also badges this.
+checkHooks().then(({ ok, problems }) => {
+  if (!ok) {
+    streamDeck.logger.warn(`hook config check failed — ${HOOK_FIX_HINT}\n  ${problems.join("\n  ")}`);
+  }
+}).catch((err) => {
+  streamDeck.logger.warn(`hook config check threw: ${err instanceof Error ? err.message : String(err)}`);
+});

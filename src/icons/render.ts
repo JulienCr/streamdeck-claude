@@ -219,3 +219,27 @@ ${topLine}
 <text x="${cx}" y="${cy + 6}" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="17" font-weight="700" fill="${KILL_ACCENT}" text-anchor="middle">KILL</text>
 </svg>`;
 }
+
+/** Palette pour le badge "hooks mal configurés" sur la touche Setup — ambre
+ *  caution, distinct du rouge error/kill (ce n'est pas un crash, juste une
+ *  install à relancer). Hors registre STATES : la touche Setup n'est pas une
+ *  session. Voir hook-check.ts + setup-action.ts. */
+const HOOK_WARN_BG = "#1a1205";
+const HOOK_WARN_ACCENT = "#f59e0b";
+
+/** Tuile statique posée sur la touche Setup quand checkHooks() détecte une
+ *  config de hook périmée/absente : triangle d'alerte + "HOOKS". Statique à
+ *  dessein — la touche Setup n'est pas dans la boucle d'animation. */
+export function renderHookWarning(): string {
+  const a = HOOK_WARN_ACCENT;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">
+<rect width="144" height="144" fill="${HOOK_WARN_BG}"/>
+<rect width="144" height="144" fill="${a}" opacity="0.12"/>
+<rect x="${BORDER_INSET}" y="${BORDER_INSET}" width="${BORDER_SIZE}" height="${BORDER_SIZE}" rx="${BORDER_RADIUS}" fill="none" stroke="${a}" stroke-width="${BORDER_STROKE}" stroke-linejoin="round" opacity="0.95"/>
+<text x="72" y="30" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11" font-weight="700" fill="${a}" opacity="0.8" text-anchor="middle">SETUP</text>
+<path d="M72 48 L104 100 L40 100 Z" fill="none" stroke="${a}" stroke-width="6" stroke-linejoin="round"/>
+<rect x="69" y="66" width="6" height="20" rx="3" fill="${a}"/>
+<circle cx="72" cy="94" r="3.5" fill="${a}"/>
+<text x="72" y="128" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="16" font-weight="700" fill="${a}" text-anchor="middle">HOOKS</text>
+</svg>`;
+}
