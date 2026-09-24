@@ -101,7 +101,7 @@ Icon code is split per concern across `src/icons/`:
 - `motifs.ts` — animated SVG fragments per state
 - `states.ts` — the single `STATES` registry mapping each `SessionState` to palette + motif + animation flag
 - `text.ts` — label splitting + marquee
-- `render.ts` — composes the final SVG, including two overlay badges drawn on interactive-session states only (never on `bg_*`, which don't carry these fields): a bottom-left `+N` for `bgRunning > 0`, and a top-left glyph for `permissionMode` (`bypassPermissions`/`plan` only — other modes render nothing)
+- `render.ts` — composes the final SVG, including two overlay badges drawn on interactive-session states only (never on `bg_*`, which don't carry these fields): a left-edge `+N` (motif height) for `bgRunning > 0`, and a top-left glyph for `permissionMode` (`bypassPermissions`/`plan` only — other modes render nothing)
 
 ## Reload trigger
 
