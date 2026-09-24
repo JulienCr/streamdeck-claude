@@ -146,7 +146,7 @@ function applyEvent(state: ReducerState, ev: SessionEvent): ReducerState {
     case "Stop":
       // A subagent cannot outlive the turn that spawned it, so depth is 0 once
       // the main turn stops — reset it to absorb any unmatched SubagentStart.
-      return { ...state, inTurn: false, awaiting: false, awaitingPermission: false, awaitingQuestion: false, awaitingPlan: false, compacting: false, subagentDepth: 0 };
+      return { ...state, inTurn: false, awaiting: false, awaitingPermission: false, awaitingQuestion: false, awaitingPlan: false, throttled: false, compacting: false, subagentDepth: 0 };
 
     case "StopFailure": {
       const throttling = ev.errorType !== undefined && THROTTLE_ERROR_TYPES.has(ev.errorType);
