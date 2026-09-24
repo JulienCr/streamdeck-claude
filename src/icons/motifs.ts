@@ -139,6 +139,32 @@ export function errorBolt(frame: number, color: string): string {
 <circle cx="72" cy="76" r="3.2" fill="${color}"/>`;
 }
 
+export function throttledClock(frame: number, color: string): string {
+  // Clock face with a hand sweeping at half the rate of spinnerArc — a calm
+  // "wait it out" beat for an automatic rate-limit backoff, not a "needs you"
+  // pulse. Reuses spinnerArc's angle math at half speed for visual continuity.
+  const cx = 72, cy = 60, r = 22;
+  const deg = (Math.floor(frame / 2) * 360) / ANIMATION_FRAMES;
+  const rad = ((deg - 90) * Math.PI) / 180;
+  const hx = cx + r * 0.7 * Math.cos(rad);
+  const hy = cy + r * 0.7 * Math.sin(rad);
+  return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${color}" stroke-width="4" opacity="0.55"/>
+<line x1="${cx}" y1="${cy}" x2="${hx.toFixed(2)}" y2="${hy.toFixed(2)}" stroke="${color}" stroke-width="4" stroke-linecap="round"/>
+<circle cx="${cx}" cy="${cy}" r="2.5" fill="${color}"/>`;
+}
+
+export function compactingSqueeze(frame: number, color: string): string {
+  // Two chevrons breathing inward/outward — evokes squeezing a log down to a
+  // summary. Same triangle-wave beat as awaitingPulse for visual continuity.
+  const phase = frame / ANIMATION_FRAMES;
+  const t = phase < 0.5 ? phase * 2 : (1 - phase) * 2;
+  const gap = 10 + t * 14;
+  const leftX = 72 - gap, rightX = 72 + gap;
+  return `<path d="M${(leftX - 10).toFixed(1)} 46 L${leftX.toFixed(1)} 60 L${(leftX - 10).toFixed(1)} 74" fill="none" stroke="${color}" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M${(rightX + 10).toFixed(1)} 46 L${rightX.toFixed(1)} 60 L${(rightX + 10).toFixed(1)} 74" fill="none" stroke="${color}" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+<line x1="${leftX.toFixed(1)}" y1="60" x2="${rightX.toFixed(1)}" y2="60" stroke="${color}" stroke-width="3" stroke-linecap="round" opacity="0.5"/>`;
+}
+
 export function subagentBranch(frame: number, color: string): string {
   // A spinner arc + an orbiting satellite — visually rhymes with `spinnerArc`
   // (same core spin) but the satellite reads as "delegated work running in

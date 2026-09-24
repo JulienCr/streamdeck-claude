@@ -22,6 +22,7 @@ $eventName = $null
 $toolName  = $null
 $notifType = $null
 $source    = $null
+$errorType = $null
 if ($payload) {
     try {
         $obj       = $payload | ConvertFrom-Json
@@ -33,6 +34,8 @@ if ($payload) {
         $notifType = $obj.notification_type
         # source is set by CC on SessionStart (startup/resume/clear/compact/fork).
         $source    = $obj.source
+        # error_type is set by CC on StopFailure (rate_limit, overloaded, server_error, ...).
+        $errorType = $obj.error_type
     } catch {
         $sessionId = $null
     }
@@ -79,6 +82,7 @@ $entry = [ordered]@{ ts = $ts; event = $eventName }
 if ($toolName)         { $entry.tool      = $toolName }
 if ($notifType)        { $entry.notifType = $notifType }
 if ($source)           { $entry.source    = $source }
+if ($errorType)        { $entry.errorType = $errorType }
 if ($null -ne $todos)  { $entry.todos     = $todos }
 $line = $entry | ConvertTo-Json -Compress
 

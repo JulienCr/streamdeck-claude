@@ -19,6 +19,8 @@ export interface SessionEvent {
   source?: string;
   /** Present only for PostToolUse[TodoWrite] — snapshot of the new list's statuses. */
   todos?: TodoStatus[];
+  /** CC's `error_type` on StopFailure: `rate_limit`, `overloaded`, `server_error`, etc. */
+  errorType?: string;
 }
 
 /** What the icon needs, derived from the event log. The session's busy/idle
@@ -36,6 +38,12 @@ export interface DerivedState {
   awaitingQuestion: boolean;
   awaitingPlan: boolean;
   errored: boolean;
+  /** StopFailure with a rate_limit/overloaded error_type — an automatic backoff,
+   *  not a real error. Cleared by UserPromptSubmit, a non-compact SessionStart,
+   *  or Notification[quota_auto_resume_fired]. */
+  throttled: boolean;
+  /** True between PreCompact and PostCompact. */
+  compacting: boolean;
   subagentDepth: number;
   /** Most recent TodoWrite snapshot; empty until the agent calls TodoWrite. */
   todos: TodoStatus[];
@@ -50,12 +58,14 @@ interface ReducerState extends DerivedState {
   inTurn: boolean;
 }
 
-const ZERO: ReducerState = { awaiting: false, awaitingPermission: false, awaitingQuestion: false, awaitingPlan: false, errored: false, subagentDepth: 0, todos: [], inTurn: false };
+const ZERO: ReducerState = { awaiting: false, awaitingPermission: false, awaitingQuestion: false, awaitingPlan: false, errored: false, throttled: false, compacting: false, subagentDepth: 0, todos: [], inTurn: false };
 
 /** Notification types (besides permission_prompt) that mean CC needs input. */
 const AWAITING_NOTIF_TYPES: ReadonlySet<string> = new Set(["idle_prompt", "elicitation_dialog", "elicitation_url_dialog", "agent_needs_input"]);
 /** Notification types that resolve a pending elicitation. */
 const CLEARING_NOTIF_TYPES: ReadonlySet<string> = new Set(["elicitation_complete", "elicitation_response"]);
+/** StopFailure error_type values that mean "will auto-retry", not a real error. */
+const THROTTLE_ERROR_TYPES: ReadonlySet<string> = new Set(["rate_limit", "overloaded"]);
 
 export function reduceEvents(events: readonly SessionEvent[]): DerivedState {
   let state = ZERO;
@@ -69,8 +79,9 @@ function applyEvent(state: ReducerState, ev: SessionEvent): ReducerState {
   switch (ev.event) {
     case "SessionStart":
       // Mid-turn auto-compaction fires SessionStart{source:compact} without a
-      // real turn boundary — preserve state instead of resetting to ZERO.
-      return ev.source === "compact" ? state : ZERO;
+      // real turn boundary — preserve state instead of resetting to ZERO. It
+      // still marks the end of the compaction itself, so clear `compacting`.
+      return ev.source === "compact" ? { ...state, compacting: false } : ZERO;
 
     case "SessionEnd":
       return ZERO;
@@ -80,9 +91,13 @@ function applyEvent(state: ReducerState, ev: SessionEvent): ReducerState {
       // subagentDepth here (and at Stop) keeps a missed SubagentStop — a
       // subagent killed or a hook that didn't fire — from leaking across the
       // turn boundary and stranding the session on the "subagent" icon.
-      return { ...state, inTurn: true, awaiting: false, awaitingPermission: false, awaitingQuestion: false, awaitingPlan: false, errored: false, subagentDepth: 0 };
+      return { ...state, inTurn: true, awaiting: false, awaitingPermission: false, awaitingQuestion: false, awaitingPlan: false, errored: false, throttled: false, subagentDepth: 0 };
 
     case "Notification": {
+      // quota_auto_resume_fired means CC just resumed after a rate-limit backoff
+      // — the session is idle (post-StopFailure) by definition, so this must
+      // clear `throttled` regardless of the inTurn gate below.
+      if (ev.notifType === "quota_auto_resume_fired") return { ...state, throttled: false };
       // Only an in-turn Notification is a real prompt to the user. After Stop,
       // CC keeps firing Notification every ~60 s as an idle reminder — those
       // would falsely flip the icon to awaiting while the user is afk.
@@ -93,6 +108,17 @@ function applyEvent(state: ReducerState, ev: SessionEvent): ReducerState {
       if (CLEARING_NOTIF_TYPES.has(ev.notifType)) return { ...state, awaiting: false };
       return state;
     }
+
+    case "PermissionRequest":
+      // Always a real dialog — CC never fires this speculatively — so it's not
+      // gated on inTurn the way Notification is.
+      return { ...state, awaitingPermission: true };
+
+    case "PreCompact":
+      return { ...state, compacting: true };
+
+    case "PostCompact":
+      return { ...state, compacting: false };
 
     case "PreToolUse": {
       // Any tool-lifecycle event mid-turn is proof the user resolved a pending
@@ -120,10 +146,20 @@ function applyEvent(state: ReducerState, ev: SessionEvent): ReducerState {
     case "Stop":
       // A subagent cannot outlive the turn that spawned it, so depth is 0 once
       // the main turn stops — reset it to absorb any unmatched SubagentStart.
-      return { ...state, inTurn: false, awaiting: false, awaitingPermission: false, awaitingQuestion: false, awaitingPlan: false, subagentDepth: 0 };
+      return { ...state, inTurn: false, awaiting: false, awaitingPermission: false, awaitingQuestion: false, awaitingPlan: false, compacting: false, subagentDepth: 0 };
 
-    case "StopFailure":
-      return { ...state, inTurn: false, awaiting: false, awaitingPermission: false, awaitingQuestion: false, awaitingPlan: false, errored: true, subagentDepth: 0 };
+    case "StopFailure": {
+      const throttling = ev.errorType !== undefined && THROTTLE_ERROR_TYPES.has(ev.errorType);
+      return {
+        ...state,
+        inTurn: false,
+        awaiting: false, awaitingPermission: false, awaitingQuestion: false, awaitingPlan: false,
+        errored: !throttling,
+        throttled: throttling,
+        compacting: false,
+        subagentDepth: 0,
+      };
+    }
 
     case "SubagentStart":
       return { ...state, subagentDepth: state.subagentDepth + 1 };
@@ -157,6 +193,7 @@ export function parseEventLog(text: string): SessionEvent[] {
           notifType: typeof obj.notifType === "string" ? obj.notifType : undefined,
           source: typeof obj.source === "string" ? obj.source : undefined,
           todos,
+          errorType: typeof obj.errorType === "string" ? obj.errorType : undefined,
         });
       }
     } catch {

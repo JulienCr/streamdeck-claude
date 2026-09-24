@@ -86,6 +86,10 @@ export interface SessionInfo {
   awaitingPlan: boolean;
   /** Last turn ended with StopFailure and no UserPromptSubmit since. */
   errored: boolean;
+  /** Last turn ended with StopFailure[rate_limit|overloaded] — auto-retrying. */
+  throttled: boolean;
+  /** Between PreCompact and PostCompact. */
+  compacting: boolean;
   /** At least one subagent currently running. */
   subagentActive: boolean;
   /** Snapshot of the last TodoWrite call's statuses; empty if none seen. */
@@ -146,7 +150,7 @@ async function readOneSource(src: SessionSourceDir): Promise<SessionInfo[]> {
         const kind: "interactive" | "bg" = raw.kind === "bg" ? "bg" : "interactive";
 
         let derived: DerivedState = {
-          awaiting: false, awaitingPermission: false, awaitingQuestion: false, awaitingPlan: false, errored: false, subagentDepth: 0, todos: [],
+          awaiting: false, awaitingPermission: false, awaitingQuestion: false, awaitingPlan: false, errored: false, throttled: false, compacting: false, subagentDepth: 0, todos: [],
         };
         // Un agent bg tourne en headless et ne nourrit pas le pipeline de hooks :
         // son json (status/waitingFor) est la source de vérité. On saute donc
@@ -190,6 +194,8 @@ async function readOneSource(src: SessionSourceDir): Promise<SessionInfo[]> {
           awaitingQuestion: derived.awaitingQuestion,
           awaitingPlan: derived.awaitingPlan,
           errored: derived.errored,
+          throttled: derived.throttled,
+          compacting: derived.compacting,
           subagentActive: derived.subagentDepth > 0,
           todos: derived.todos,
           origin: src.origin,
@@ -325,22 +331,19 @@ export async function wipeAllEventLogs(): Promise<{ wiped: number; errors: strin
 }
 
 /** State for the icon, derived from session status + event-log projection + liveness.
- *  Priority: finished > error > awaiting_plan > awaiting_permission >
- *  awaiting_question > awaiting > subagent > working > idle. Plan approval ranks
- *  first among "needs you" states because users can sit on it longest; the more
- *  specific flags (permission, question) win over the generic catch-all so the
- *  distinct icon shows up. All awaiting* flags win over rawStatus="busy" since
- *  CC keeps the session marked busy while waiting — the event log is the source
- *  of truth for "needs input." Spurious idle-reminder Notifications fired after
- *  Stop are already filtered upstream in reduceEvents via its inTurn guard. */
+ *  Priority: finished > error > throttled > awaiting_plan > awaiting_permission >
+ *  awaiting_question > awaiting > compacting > subagent > working > idle.
+ *  awaiting* beats rawStatus="busy": CC keeps the session busy while it waits. */
 export function deriveState(s: SessionInfo, alive: boolean): SessionState {
   if (!alive) return "finished";
   if (s.kind === "bg") return deriveBgState(s);
   if (s.errored) return "error";
+  if (s.throttled) return "throttled";
   if (s.awaitingPlan) return "awaiting_plan";
   if (s.awaitingPermission) return "awaiting_permission";
   if (s.awaitingQuestion) return "awaiting_question";
   if (s.awaiting) return "awaiting";
+  if (s.compacting) return "compacting";
   if (s.rawStatus === "busy" && s.subagentActive) return "subagent";
   if (s.rawStatus === "busy") return "working";
   return "idle";

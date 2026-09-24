@@ -18,7 +18,9 @@ Each running `claude` CLI session lights up one key on your deck — project nam
 | <img src="icons/idle.svg" width="64" alt="idle"> | `idle` | Claude is waiting for your next prompt |
 | <img src="icons/awaiting.svg" width="64" alt="awaiting"> | `awaiting` | Permission prompt — your turn |
 | <img src="icons/awaiting_plan.svg" width="64" alt="awaiting_plan"> | `awaiting_plan` | `ExitPlanMode` was called — plan approval pending |
-| <img src="icons/error.svg" width="64" alt="error"> | `error` | Last turn failed (rate limit / auth / server error) |
+| <img src="icons/compacting.svg" width="64" alt="compacting"> | `compacting` | Claude is compacting its context — nothing to do |
+| <img src="icons/throttled.svg" width="64" alt="throttled"> | `throttled` | Rate-limited / overloaded — auto-retrying, nothing to do |
+| <img src="icons/error.svg" width="64" alt="error"> | `error` | Last turn failed (auth / server error) |
 | <img src="icons/finished.svg" width="64" alt="finished"> | `finished` | Session just ended (visible ~3 s, then drops) |
 | <img src="icons/empty.svg" width="64" alt="empty"> | `empty` | No session in this slot |
 

@@ -55,7 +55,44 @@ test("SessionStart with no source still resets state", () => {
     awaitingQuestion: false,
     awaitingPlan: false,
     errored: false,
+    throttled: false,
+    compacting: false,
     subagentDepth: 0,
     todos: [],
   });
+});
+
+test("PermissionRequest outside a turn sets awaitingPermission", () => {
+  const state = reduceEvents([ev("PermissionRequest")]);
+  assert.equal(state.awaitingPermission, true);
+});
+
+test("StopFailure[rate_limit] sets throttled not errored, cleared by quota_auto_resume_fired", () => {
+  const throttled = reduceEvents([ev("UserPromptSubmit"), ev("StopFailure", { errorType: "rate_limit" })]);
+  assert.equal(throttled.throttled, true);
+  assert.equal(throttled.errored, false);
+
+  const resumed = reduceEvents([
+    ev("UserPromptSubmit"),
+    ev("StopFailure", { errorType: "rate_limit" }),
+    ev("Notification", { notifType: "quota_auto_resume_fired" }),
+  ]);
+  assert.equal(resumed.throttled, false);
+});
+
+test("StopFailure[server_error] sets errored not throttled", () => {
+  const state = reduceEvents([ev("UserPromptSubmit"), ev("StopFailure", { errorType: "server_error" })]);
+  assert.equal(state.errored, true);
+  assert.equal(state.throttled, false);
+});
+
+test("PreCompact sets compacting, PostCompact and Stop clear it", () => {
+  const compacting = reduceEvents([ev("UserPromptSubmit"), ev("PreCompact")]);
+  assert.equal(compacting.compacting, true);
+
+  const postCompacted = reduceEvents([ev("UserPromptSubmit"), ev("PreCompact"), ev("PostCompact")]);
+  assert.equal(postCompacted.compacting, false);
+
+  const stopped = reduceEvents([ev("UserPromptSubmit"), ev("PreCompact"), ev("Stop")]);
+  assert.equal(stopped.compacting, false);
 });

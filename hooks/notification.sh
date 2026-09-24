@@ -22,6 +22,8 @@ TOOL_NAME="$(printf '%s' "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null || t
 NOTIF_TYPE="$(printf '%s' "$INPUT" | jq -r '.notification_type // empty' 2>/dev/null || true)"
 # source is set by CC on SessionStart (startup/resume/clear/compact/fork).
 SOURCE="$(printf '%s' "$INPUT" | jq -r '.source // empty' 2>/dev/null || true)"
+# error_type is set by CC on StopFailure (rate_limit, overloaded, server_error, ...).
+ERROR_TYPE="$(printf '%s' "$INPUT" | jq -r '.error_type // empty' 2>/dev/null || true)"
 
 if [ -z "${SESSION_ID:-}" ] || [ -z "${EVENT:-}" ]; then
   echo '{}'
@@ -67,11 +69,13 @@ jq -nc \
   --arg tool "$TOOL_NAME" \
   --arg notifType "$NOTIF_TYPE" \
   --arg source "$SOURCE" \
+  --arg errorType "$ERROR_TYPE" \
   --argjson todos "$TODOS_JSON" \
   '{ts: $ts, event: $event}
    | (if $tool      != ""   then . + {tool:      $tool}      else . end)
    | (if $notifType != ""   then . + {notifType: $notifType} else . end)
    | (if $source    != ""   then . + {source:    $source}    else . end)
+   | (if $errorType != ""   then . + {errorType: $errorType} else . end)
    | (if $todos     != null then . + {todos:     $todos}     else . end)' \
   >> "$TARGET"
 

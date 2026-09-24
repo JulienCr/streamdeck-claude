@@ -151,9 +151,12 @@ prune_existing
 # but SessionStart truncates so it's bounded per CC run).
 merge "SessionStart"        ""
 merge "Notification"        ""
+merge "PermissionRequest"   ""
 merge "PreToolUse"          ""
 merge "PostToolUse"         ""
 merge "PostToolUseFailure"  ""
+merge "PreCompact"          ""
+merge "PostCompact"         ""
 merge "Stop"                ""
 merge "StopFailure"         ""
 merge "UserPromptSubmit"    ""
@@ -164,7 +167,7 @@ merge "SessionEnd"          ""
 # --- Final summary ---------------------------------------------------------
 echo "Hook command:"
 echo "  $HOOK_CMD"
-echo "Registered for: SessionStart, Notification, PreToolUse, PostToolUse, PostToolUseFailure, Stop, StopFailure, UserPromptSubmit, SubagentStart, SubagentStop, SessionEnd"
+echo "Registered for: SessionStart, Notification, PermissionRequest, PreToolUse, PostToolUse, PostToolUseFailure, PreCompact, PostCompact, Stop, StopFailure, UserPromptSubmit, SubagentStart, SubagentStop, SessionEnd"
 echo "Settings: $SETTINGS_PATH  (backup at $BACKUP)"
 if [ "$TARGET" = "windows" ]; then
   echo

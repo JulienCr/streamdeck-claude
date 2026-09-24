@@ -31,7 +31,9 @@ const SAMPLES = [
   { state: "awaiting_permission", slot: 5, label: "deploy-to-prod",             frame: 6, now: FROZEN_NOW },
   { state: "awaiting_question",   slot: 5, label: "pick-an-option",             frame: 6, now: FROZEN_NOW },
   { state: "awaiting_plan",       slot: 5, label: "publish-streamdeck-claude",  frame: 6, now: FROZEN_NOW },
-  { state: "error",         slot: 1, label: "rate-limited-turn",          frame: 6, now: FROZEN_NOW },
+  { state: "compacting",    slot: 4, label: "long-running-session",       frame: 6, now: FROZEN_NOW },
+  { state: "throttled",     slot: 4, label: "quota-exceeded-project",     frame: 6, now: FROZEN_NOW },
+  { state: "error",         slot: 1, label: "auth-failed-turn",           frame: 6, now: FROZEN_NOW },
   { state: "finished",      slot: 2, label: "loadtestvideo",              frame: 0, now: FROZEN_NOW },
   { state: "empty",         slot: 3, label: "",                           frame: 0, now: FROZEN_NOW },
   // Bonus: a long single segment that triggers the marquee on the top line.

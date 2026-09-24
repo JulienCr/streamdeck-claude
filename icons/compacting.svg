@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">
+<rect width="144" height="144" fill="#04120f"/>
+
+<rect x="5" y="5" width="134" height="134" rx="20" fill="none" stroke="#2dd4bf" stroke-width="5" stroke-linejoin="round" opacity="0.95"/>
+<text x="128" y="22" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="10" font-weight="700" fill="#2dd4bf" opacity="0.8" text-anchor="end">4</text>
+
+<text x="72" y="30" font-family="-apple-system,Segoe UI,Roboto,sans-serif" font-size="19" font-weight="700" fill="#2dd4bf" text-anchor="middle">long</text>
+<g transform="translate(0,8)"><path d="M38.0 46 L48.0 60 L38.0 74" fill="none" stroke="#2dd4bf" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M106.0 46 L96.0 60 L106.0 74" fill="none" stroke="#2dd4bf" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+<line x1="48.0" y1="60" x2="96.0" y2="60" stroke="#2dd4bf" stroke-width="3" stroke-linecap="round" opacity="0.5"/></g>
+<text x="72" y="112" font-family="-apple-system,Segoe UI,Roboto,sans-serif" font-size="17" font-weight="600" fill="#99f6e4" text-anchor="middle">running</text>
+<text x="72" y="132" font-family="-apple-system,Segoe UI,Roboto,sans-serif" font-size="17" font-weight="600" fill="#99f6e4" text-anchor="middle">session</text>
+
+</svg>
