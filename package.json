@@ -19,7 +19,7 @@
     "sd:dev": "bash scripts/sd-cli.sh dev",
     "sd:reload": "bash scripts/reload-plugin.sh",
     "drill": "tsx scripts/drill-states.ts",
-    "test": "node --import tsx --test src/**/*.test.ts"
+    "test": "node --import tsx --test src/*.test.ts"
   },
   "devDependencies": {
     "@elgato/cli": "^1.7.4",

@@ -23,7 +23,7 @@ pnpm icons:render       # regenerate icons/*.svg reference assets from src/icons
 pnpm icons:static       # rasterize manifest PNGs from assets/svg/ via @resvg/resvg-js
 ```
 
-There is **no test suite and no lint script**. Verify by `pnpm build && pnpm sd:validate && pnpm sd:reload`, then watch logs at `%APPDATA%\Elgato\StreamDeck\Plugins\com.julien.claudesessions.sdPlugin\logs\`.
+`pnpm test` runs a small `node:test` suite on the `reduceEvents` state machine (`src/*.test.ts`); there is no lint script. Verify by `pnpm test && pnpm build && pnpm sd:validate && pnpm sd:reload`, then watch logs at `%APPDATA%\Elgato\StreamDeck\Plugins\com.julien.claudesessions.sdPlugin\logs\`.
 
 The Elgato `streamdeck restart` / `streamdeck list` commands fail from WSL with `EIO` because they `readlink` a UNC-targeted symlink — use `pnpm sd:reload` instead. First time after building, you still need to quit + relaunch the SD app once so the new bundle picks up the reload-watcher.
 

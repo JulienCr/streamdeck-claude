@@ -80,6 +80,10 @@ test("StopFailure[rate_limit] sets throttled not errored, cleared by quota_auto_
     ev("Notification", { notifType: "quota_auto_resume_fired" }),
   ]);
   assert.equal(resumed.throttled, false);
+
+  // overloaded retries on its own and has no quota notification: a later Stop must clear it.
+  const retried = reduceEvents([ev("UserPromptSubmit"), ev("StopFailure", { errorType: "overloaded" }), ev("Stop")]);
+  assert.equal(retried.throttled, false);
 });
 
 test("StopFailure[server_error] sets errored not throttled", () => {

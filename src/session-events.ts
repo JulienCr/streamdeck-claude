@@ -205,7 +205,7 @@ function applyEventCore(state: ReducerState, ev: SessionEvent): ReducerState {
       // SubagentStop. Background ones are counted by bgRunning instead.
       return {
         ...state, inTurn: false,
-        awaiting: false, awaitingPermission: false, awaitingQuestion: false, awaitingPlan: false, compacting: false,
+        awaiting: false, awaitingPermission: false, awaitingQuestion: false, awaitingPlan: false, throttled: false, compacting: false,
         activeSubagents: new Set(), legacySubagentDepth: 0, pendingPermissionAgent: undefined,
         bgRunning: ev.bgRunning ?? state.bgRunning,
       };
