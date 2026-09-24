@@ -104,11 +104,11 @@ function renderPermissionBadge(mode: string | undefined): string {
   return `<text x="16" y="22" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="${spec.fontSize}" font-weight="700" fill="${spec.color}" opacity="0.9" text-anchor="start">${spec.glyph}</text>`;
 }
 
-/** Bottom-left corner — "+N" running background tasks, so an otherwise-idle
- *  slot still shows work isn't actually done. Uses the state's own accent so
- *  it reads as part of the tile rather than a competing colour. */
+/** "+N" running background tasks, so an idle slot still shows work isn't done.
+ *  Left margin at motif height: the label bands never reach it, and the widest
+ *  motif (compacting) starts at x=35, clear of a two-digit count. */
 function renderBgRunningBadge(count: number, accent: string): string {
-  return `<text x="21" y="130" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11" font-weight="700" fill="${accent}" opacity="0.85" text-anchor="start">+${count}</text>`;
+  return `<text x="13" y="76" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11" font-weight="700" fill="${accent}" opacity="0.85" text-anchor="start">+${count}</text>`;
 }
 
 export function renderIcon({ state, slot, label, frame = 0, now, todos, bgRunning, permissionMode }: IconOptions): string {

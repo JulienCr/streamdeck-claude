@@ -39,7 +39,7 @@ const SAMPLES = [
   // Bonus: a long single segment that triggers the marquee on the top line.
   { state: "working",       slot: 1, label: "very-long-singleword-that-overflows", frame: 0, now: FROZEN_NOW },
   // Bonus: the two subtle overlay badges (permission mode top-left, running
-  // background tasks bottom-left) — shown independently and combined.
+  // background tasks on the left edge) — shown independently and combined.
   { name: "badge-bypass",      state: "idle",    slot: 6, label: "yolo-mode-project",   frame: 0, now: FROZEN_NOW, permissionMode: "bypassPermissions" },
   { name: "badge-plan",        state: "idle",    slot: 6, label: "planning-a-refactor", frame: 0, now: FROZEN_NOW, permissionMode: "plan" },
   { name: "badge-bg-running",  state: "working", slot: 6, label: "delegated-research",  frame: 3, now: FROZEN_NOW, bgRunning: 2 },
