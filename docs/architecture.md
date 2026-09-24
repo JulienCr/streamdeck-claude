@@ -20,18 +20,23 @@ Every registered Claude Code hook event appends one JSON line to `~/.claude/sess
 | Hook event | Effect on state |
 |---|---|
 | `SessionStart` | truncates the log + resets state |
-| `SessionStart[source=compact]` | no-op — mid-turn auto-compaction, state is preserved |
+| `SessionStart[source=compact]` | preserves state (mid-turn auto-compaction) but clears `compacting` |
 | `Notification[permission_prompt]` | sets `awaitingPermission` (only in-turn) |
 | `Notification[idle_prompt\|elicitation_dialog\|elicitation_url_dialog\|agent_needs_input]` / undefined | sets `awaiting` (undefined covers older logs / older CC builds) |
 | `Notification[elicitation_complete\|elicitation_response]` | clears `awaiting` |
+| `Notification[quota_auto_resume_fired]` | clears `throttled` (not gated on `inTurn` — fires while idle) |
 | `Notification` post-Stop (`idle_prompt`) | ignored — filtered by reducer's `inTurn` guard |
-| `Stop` | clears `awaiting` / `awaitingPermission` / `awaitingQuestion` / `awaitingPlan` |
+| `PermissionRequest` | sets `awaitingPermission` (not gated on `inTurn` — always a real dialog) |
+| `PreCompact` | sets `compacting` |
+| `PostCompact` | clears `compacting` |
+| `Stop` | clears `awaiting` / `awaitingPermission` / `awaitingQuestion` / `awaitingPlan` / `compacting` |
 | `PreToolUse[ExitPlanMode]` | sets `awaitingPlan` |
 | `PostToolUse[ExitPlanMode]` / `PostToolUseFailure[ExitPlanMode]` | clears `awaitingPlan` |
 | `PreToolUse[AskUserQuestion]` | sets `awaitingQuestion` |
 | `PostToolUse[AskUserQuestion]` / `PostToolUseFailure[AskUserQuestion]` | clears `awaitingQuestion` |
-| `StopFailure` | sets `errored` |
-| `UserPromptSubmit` | clears all `awaiting*` flags + `errored` |
+| `StopFailure[rate_limit\|overloaded]` | sets `throttled` (auto-retry, not a real error) |
+| `StopFailure` (other/absent `error_type`) | sets `errored` |
+| `UserPromptSubmit` | clears all `awaiting*` flags + `errored` + `throttled` |
 | `SubagentStart` / `SubagentStop` | bumps `subagentDepth` ±1 |
 | `SessionEnd` | unlinks the log |
 
@@ -41,7 +46,7 @@ The `notification_type` discrimination requires hooks to capture CC's `notificat
 
 The catch-all matcher is load-bearing: `awaitingPermission` is cleared by *any* `PreToolUse`/`PostToolUse` mid-turn (`session-events.ts`), so a permission padlock only clears once a normal tool runs after approval. If a stale `settings.json` registers these tool-specific (the pre-`9dc606c` `ExitPlanMode`/`TodoWrite` matchers) instead, `PostToolUse[Bash]` never fires and the padlock stays stuck until the turn ends. `src/hook-check.ts` guards against exactly this: it verifies the catch-all registration at startup (and on Setup-key appear) and surfaces a warning rather than letting the plugin degrade silently.
 
-To add a new state: register the event in `scripts/install-hook.sh`, add a case in `src/session-events.ts`, and an entry in the `STATES` registry at `src/icons/states.ts`. State priority (see `deriveState()` in `src/sessions.ts`): `finished` > `error` > `awaiting_plan` > `awaiting_permission` > `awaiting_question` > `awaiting` > `subagent` > `working` > `idle`. All `awaiting*` flags win over `busy` because CC keeps the session marked busy while waiting on the user.
+To add a new state: register the event in `scripts/install-hook.sh`, add a case in `src/session-events.ts`, and an entry in the `STATES` registry at `src/icons/states.ts`. State priority (see `deriveState()` in `src/sessions.ts`): `finished` > `error` > `throttled` > `awaiting_plan` > `awaiting_permission` > `awaiting_question` > `awaiting` > `compacting` > `subagent` > `working` > `idle`. All `awaiting*` flags win over `busy` because CC keeps the session marked busy while waiting on the user.
 
 ## Path / environment resolution
 

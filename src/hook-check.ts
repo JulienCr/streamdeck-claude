@@ -26,9 +26,12 @@ import {
 export const REQUIRED_HOOK_EVENTS = [
   "SessionStart",
   "Notification",
+  "PermissionRequest",
   "PreToolUse",
   "PostToolUse",
   "PostToolUseFailure",
+  "PreCompact",
+  "PostCompact",
   "Stop",
   "StopFailure",
   "UserPromptSubmit",
