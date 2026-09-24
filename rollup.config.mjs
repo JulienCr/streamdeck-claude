@@ -4,11 +4,23 @@ import terser from "@rollup/plugin-terser";
 import typescript from "@rollup/plugin-typescript";
 import path from "node:path";
 import url from "node:url";
+import { execSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { userInfo } from "node:os";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const isWatching = !!process.env.ROLLUP_WATCH;
 const sdPlugin = "com.julien.claudesessions.sdPlugin";
+
+function gitCommit() {
+  try {
+    const sha = execSync("git rev-parse --short HEAD", { cwd: __dirname }).toString().trim();
+    const dirty = execSync("git status --porcelain --untracked-files=no", { cwd: __dirname }).toString().trim() !== "";
+    return dirty ? `${sha}-dirty` : sha;
+  } catch {
+    return "unknown";
+  }
+}
 
 // Build-time values for src/env.ts. The Windows-side SD app launches the
 // plugin without HOME / WSL_DISTRO_NAME set, so we bake build-host values
@@ -66,6 +78,8 @@ export default {
       generateBundle() {
         const now = new Date();
         const info = {
+          version: JSON.parse(readFileSync(path.join(__dirname, "package.json"), "utf8")).version,
+          commit: gitCommit(),
           builtAt: now.toISOString(),
           builtAtLocal: now.toLocaleString("sv-SE"), // YYYY-MM-DD HH:MM:SS, locale-stable
           unix: now.getTime(),
