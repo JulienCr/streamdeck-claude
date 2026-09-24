@@ -38,12 +38,19 @@ const SAMPLES = [
   { state: "empty",         slot: 3, label: "",                           frame: 0, now: FROZEN_NOW },
   // Bonus: a long single segment that triggers the marquee on the top line.
   { state: "working",       slot: 1, label: "very-long-singleword-that-overflows", frame: 0, now: FROZEN_NOW },
+  // Bonus: the two subtle overlay badges (permission mode top-left, running
+  // background tasks on the left edge) — shown independently and combined.
+  { name: "badge-bypass",      state: "idle",    slot: 6, label: "yolo-mode-project",   frame: 0, now: FROZEN_NOW, permissionMode: "bypassPermissions" },
+  { name: "badge-plan",        state: "idle",    slot: 6, label: "planning-a-refactor", frame: 0, now: FROZEN_NOW, permissionMode: "plan" },
+  { name: "badge-bg-running",  state: "working", slot: 6, label: "delegated-research",  frame: 3, now: FROZEN_NOW, bgRunning: 2 },
+  { name: "badge-both",        state: "idle",    slot: 6, label: "both-badges-at-once", frame: 0, now: FROZEN_NOW, bgRunning: 1, permissionMode: "bypassPermissions" },
 ];
 
 for (const sample of SAMPLES) {
-  // Distinguish the "long-name overflow" sample by file name.
+  // Distinguish the "long-name overflow" sample by file name; badge samples
+  // carry their own `name` since several share a state with the base sample.
   const overflow = sample.label.includes("overflows");
-  const filename = overflow ? `${sample.state}-marquee.svg` : `${sample.state}.svg`;
+  const filename = sample.name ? `${sample.name}.svg` : overflow ? `${sample.state}-marquee.svg` : `${sample.state}.svg`;
   writeFileSync(resolve(outDir, filename), renderIcon(sample));
   console.log(`wrote icons/${filename}`);
 }
