@@ -21,6 +21,7 @@ $sessionId = $null
 $eventName = $null
 $toolName  = $null
 $notifType = $null
+$source    = $null
 if ($payload) {
     try {
         $obj       = $payload | ConvertFrom-Json
@@ -30,6 +31,8 @@ if ($payload) {
         # notification_type is set by CC on Notification events
         # (permission_prompt, idle_prompt, elicitation_dialog, auth_success).
         $notifType = $obj.notification_type
+        # source is set by CC on SessionStart (startup/resume/clear/compact/fork).
+        $source    = $obj.source
     } catch {
         $sessionId = $null
     }
@@ -50,8 +53,9 @@ if ($eventName -eq 'SessionEnd') {
     exit
 }
 
-# SessionStart: truncate before appending the new entry.
-if ($eventName -eq 'SessionStart') {
+# SessionStart: truncate before appending the new entry, except source=compact
+# (mid-turn auto-compaction) — wiping the log would reset inTurn/awaiting state.
+if ($eventName -eq 'SessionStart' -and $source -ne 'compact') {
     Set-Content -Path $target -Value '' -NoNewline -Encoding utf8
 }
 
@@ -74,6 +78,7 @@ if ($toolName -eq 'TodoWrite') {
 $entry = [ordered]@{ ts = $ts; event = $eventName }
 if ($toolName)         { $entry.tool      = $toolName }
 if ($notifType)        { $entry.notifType = $notifType }
+if ($source)           { $entry.source    = $source }
 if ($null -ne $todos)  { $entry.todos     = $todos }
 $line = $entry | ConvertTo-Json -Compress
 

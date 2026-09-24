@@ -20,6 +20,8 @@ TOOL_NAME="$(printf '%s' "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null || t
 # notification_type is set by CC on Notification events (permission_prompt,
 # idle_prompt, elicitation_dialog, auth_success). Empty for non-Notification.
 NOTIF_TYPE="$(printf '%s' "$INPUT" | jq -r '.notification_type // empty' 2>/dev/null || true)"
+# source is set by CC on SessionStart (startup/resume/clear/compact/fork).
+SOURCE="$(printf '%s' "$INPUT" | jq -r '.source // empty' 2>/dev/null || true)"
 
 if [ -z "${SESSION_ID:-}" ] || [ -z "${EVENT:-}" ]; then
   echo '{}'
@@ -38,7 +40,9 @@ fi
 
 # SessionStart: truncate before appending so the file always begins with the
 # matching SessionStart entry — bounds long-lived sessions from growing forever.
-if [ "$EVENT" = "SessionStart" ]; then
+# Except source=compact: auto-compaction can fire mid-turn, and wiping the log
+# would reset inTurn/awaiting state the reducer needs to keep tracking the turn.
+if [ "$EVENT" = "SessionStart" ] && [ "$SOURCE" != "compact" ]; then
   : > "$TARGET"
 fi
 
@@ -62,10 +66,12 @@ jq -nc \
   --arg event "$EVENT" \
   --arg tool "$TOOL_NAME" \
   --arg notifType "$NOTIF_TYPE" \
+  --arg source "$SOURCE" \
   --argjson todos "$TODOS_JSON" \
   '{ts: $ts, event: $event}
    | (if $tool      != ""   then . + {tool:      $tool}      else . end)
    | (if $notifType != ""   then . + {notifType: $notifType} else . end)
+   | (if $source    != ""   then . + {source:    $source}    else . end)
    | (if $todos     != null then . + {todos:     $todos}     else . end)' \
   >> "$TARGET"
 
