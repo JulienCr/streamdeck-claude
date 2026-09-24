@@ -28,6 +28,7 @@ export const REQUIRED_HOOK_EVENTS = [
   "Notification",
   "PreToolUse",
   "PostToolUse",
+  "PostToolUseFailure",
   "Stop",
   "StopFailure",
   "UserPromptSubmit",

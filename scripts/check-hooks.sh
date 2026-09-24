@@ -23,6 +23,7 @@ EXPECTED_EVENTS=(
   "Notification|"
   "PreToolUse|"
   "PostToolUse|"
+  "PostToolUseFailure|"
   "Stop|"
   "StopFailure|"
   "UserPromptSubmit|"

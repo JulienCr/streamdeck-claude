@@ -20,14 +20,16 @@ Every registered Claude Code hook event appends one JSON line to `~/.claude/sess
 | Hook event | Effect on state |
 |---|---|
 | `SessionStart` | truncates the log + resets state |
+| `SessionStart[source=compact]` | no-op — mid-turn auto-compaction, state is preserved |
 | `Notification[permission_prompt]` | sets `awaitingPermission` (only in-turn) |
-| `Notification[*]` other in-turn types | sets `awaiting` (catch-all for `elicitation_dialog` / unknown / older logs) |
+| `Notification[idle_prompt\|elicitation_dialog\|elicitation_url_dialog\|agent_needs_input]` / undefined | sets `awaiting` (undefined covers older logs / older CC builds) |
+| `Notification[elicitation_complete\|elicitation_response]` | clears `awaiting` |
 | `Notification` post-Stop (`idle_prompt`) | ignored — filtered by reducer's `inTurn` guard |
 | `Stop` | clears `awaiting` / `awaitingPermission` / `awaitingQuestion` / `awaitingPlan` |
 | `PreToolUse[ExitPlanMode]` | sets `awaitingPlan` |
-| `PostToolUse[ExitPlanMode]` | clears `awaitingPlan` |
+| `PostToolUse[ExitPlanMode]` / `PostToolUseFailure[ExitPlanMode]` | clears `awaitingPlan` |
 | `PreToolUse[AskUserQuestion]` | sets `awaitingQuestion` |
-| `PostToolUse[AskUserQuestion]` | clears `awaitingQuestion` |
+| `PostToolUse[AskUserQuestion]` / `PostToolUseFailure[AskUserQuestion]` | clears `awaitingQuestion` |
 | `StopFailure` | sets `errored` |
 | `UserPromptSubmit` | clears all `awaiting*` flags + `errored` |
 | `SubagentStart` / `SubagentStop` | bumps `subagentDepth` ±1 |

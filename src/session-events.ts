@@ -15,6 +15,8 @@ export interface SessionEvent {
    *  `idle_prompt`, `elicitation_dialog`, `auth_success`. Older logs from
    *  before the hook captured this field will be `undefined`. */
   notifType?: string;
+  /** CC's `source` on SessionStart: `startup`/`resume`/`clear`/`compact`/`fork`. */
+  source?: string;
   /** Present only for PostToolUse[TodoWrite] — snapshot of the new list's statuses. */
   todos?: TodoStatus[];
 }
@@ -50,6 +52,11 @@ interface ReducerState extends DerivedState {
 
 const ZERO: ReducerState = { awaiting: false, awaitingPermission: false, awaitingQuestion: false, awaitingPlan: false, errored: false, subagentDepth: 0, todos: [], inTurn: false };
 
+/** Notification types (besides permission_prompt) that mean CC needs input. */
+const AWAITING_NOTIF_TYPES: ReadonlySet<string> = new Set(["idle_prompt", "elicitation_dialog", "elicitation_url_dialog", "agent_needs_input"]);
+/** Notification types that resolve a pending elicitation. */
+const CLEARING_NOTIF_TYPES: ReadonlySet<string> = new Set(["elicitation_complete", "elicitation_response"]);
+
 export function reduceEvents(events: readonly SessionEvent[]): DerivedState {
   let state = ZERO;
   for (const ev of events) state = applyEvent(state, ev);
@@ -61,6 +68,10 @@ export function reduceEvents(events: readonly SessionEvent[]): DerivedState {
 function applyEvent(state: ReducerState, ev: SessionEvent): ReducerState {
   switch (ev.event) {
     case "SessionStart":
+      // Mid-turn auto-compaction fires SessionStart{source:compact} without a
+      // real turn boundary — preserve state instead of resetting to ZERO.
+      return ev.source === "compact" ? state : ZERO;
+
     case "SessionEnd":
       return ZERO;
 
@@ -71,17 +82,17 @@ function applyEvent(state: ReducerState, ev: SessionEvent): ReducerState {
       // turn boundary and stranding the session on the "subagent" icon.
       return { ...state, inTurn: true, awaiting: false, awaitingPermission: false, awaitingQuestion: false, awaitingPlan: false, errored: false, subagentDepth: 0 };
 
-    case "Notification":
+    case "Notification": {
       // Only an in-turn Notification is a real prompt to the user. After Stop,
       // CC keeps firing Notification every ~60 s as an idle reminder — those
       // would falsely flip the icon to awaiting while the user is afk.
-      // Split permission_prompt (CC asking to use a tool — gets its own padlock
-      // icon) from anything else in-turn (elicitation_dialog / older logs with
-      // no notifType — generic "needs input" awaiting).
       if (!state.inTurn) return state;
-      return ev.notifType === "permission_prompt"
-        ? { ...state, awaitingPermission: true }
-        : { ...state, awaiting: true };
+      if (ev.notifType === "permission_prompt") return { ...state, awaitingPermission: true };
+      // undefined covers older logs / older CC builds predating notifType.
+      if (ev.notifType === undefined || AWAITING_NOTIF_TYPES.has(ev.notifType)) return { ...state, awaiting: true };
+      if (CLEARING_NOTIF_TYPES.has(ev.notifType)) return { ...state, awaiting: false };
+      return state;
+    }
 
     case "PreToolUse": {
       // Any tool-lifecycle event mid-turn is proof the user resolved a pending
@@ -97,11 +108,12 @@ function applyEvent(state: ReducerState, ev: SessionEvent): ReducerState {
       return next;
     }
 
-    case "PostToolUse": {
+    case "PostToolUse":
+    case "PostToolUseFailure": {
       const next = { ...state, awaiting: false, awaitingPermission: false };
       if (ev.tool === "ExitPlanMode") return { ...next, awaitingPlan: false };
       if (ev.tool === "AskUserQuestion") return { ...next, awaitingQuestion: false };
-      if (ev.tool === "TodoWrite" && ev.todos) return { ...next, todos: ev.todos };
+      if (ev.event === "PostToolUse" && ev.tool === "TodoWrite" && ev.todos) return { ...next, todos: ev.todos };
       return next;
     }
 
@@ -143,6 +155,7 @@ export function parseEventLog(text: string): SessionEvent[] {
           event: obj.event,
           tool: typeof obj.tool === "string" ? obj.tool : undefined,
           notifType: typeof obj.notifType === "string" ? obj.notifType : undefined,
+          source: typeof obj.source === "string" ? obj.source : undefined,
           todos,
         });
       }

@@ -18,7 +18,8 @@
     "sd:pack": "bash scripts/sd-cli.sh pack com.julien.claudesessions.sdPlugin --output dist/",
     "sd:dev": "bash scripts/sd-cli.sh dev",
     "sd:reload": "bash scripts/reload-plugin.sh",
-    "drill": "tsx scripts/drill-states.ts"
+    "drill": "tsx scripts/drill-states.ts",
+    "test": "node --import tsx --test src/**/*.test.ts"
   },
   "devDependencies": {
     "@elgato/cli": "^1.7.4",

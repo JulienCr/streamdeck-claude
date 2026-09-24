@@ -149,21 +149,22 @@ prune_existing
 # ExitPlanMode, TodoWrite, and AskUserQuestion; other tools are noop'd at the
 # reducer level. Trade-off: bigger NDJSON per session (~1 line per tool call,
 # but SessionStart truncates so it's bounded per CC run).
-merge "SessionStart"     ""
-merge "Notification"     ""
-merge "PreToolUse"       ""
-merge "PostToolUse"      ""
-merge "Stop"             ""
-merge "StopFailure"      ""
-merge "UserPromptSubmit" ""
-merge "SubagentStart"    ""
-merge "SubagentStop"     ""
-merge "SessionEnd"       ""
+merge "SessionStart"        ""
+merge "Notification"        ""
+merge "PreToolUse"          ""
+merge "PostToolUse"         ""
+merge "PostToolUseFailure"  ""
+merge "Stop"                ""
+merge "StopFailure"         ""
+merge "UserPromptSubmit"    ""
+merge "SubagentStart"       ""
+merge "SubagentStop"        ""
+merge "SessionEnd"          ""
 
 # --- Final summary ---------------------------------------------------------
 echo "Hook command:"
 echo "  $HOOK_CMD"
-echo "Registered for: SessionStart, Notification, PreToolUse, PostToolUse, Stop, StopFailure, UserPromptSubmit, SubagentStart, SubagentStop, SessionEnd"
+echo "Registered for: SessionStart, Notification, PreToolUse, PostToolUse, PostToolUseFailure, Stop, StopFailure, UserPromptSubmit, SubagentStart, SubagentStop, SessionEnd"
 echo "Settings: $SETTINGS_PATH  (backup at $BACKUP)"
 if [ "$TARGET" = "windows" ]; then
   echo
