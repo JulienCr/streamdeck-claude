@@ -92,6 +92,12 @@ export interface SessionInfo {
   compacting: boolean;
   /** At least one subagent currently running. */
   subagentActive: boolean;
+  /** Count of background tasks (background_tasks with status "running") from
+   *  the last Stop/SubagentStop that reported it. Outlives turn boundaries. */
+  bgRunning: number;
+  /** Last permission mode seen on a main-thread event: default/plan/acceptEdits/
+   *  auto/dontAsk/bypassPermissions. Undefined until a hook reports one. */
+  permissionMode?: string;
   /** Snapshot of the last TodoWrite call's statuses; empty if none seen. */
   todos: TodoStatus[];
   origin: SessionOrigin;
@@ -150,7 +156,7 @@ async function readOneSource(src: SessionSourceDir): Promise<SessionInfo[]> {
         const kind: "interactive" | "bg" = raw.kind === "bg" ? "bg" : "interactive";
 
         let derived: DerivedState = {
-          awaiting: false, awaitingPermission: false, awaitingQuestion: false, awaitingPlan: false, errored: false, throttled: false, compacting: false, subagentDepth: 0, todos: [],
+          awaiting: false, awaitingPermission: false, awaitingQuestion: false, awaitingPlan: false, errored: false, throttled: false, compacting: false, subagentActive: false, bgRunning: 0, todos: [],
         };
         // Un agent bg tourne en headless et ne nourrit pas le pipeline de hooks :
         // son json (status/waitingFor) est la source de vérité. On saute donc
@@ -196,7 +202,9 @@ async function readOneSource(src: SessionSourceDir): Promise<SessionInfo[]> {
           errored: derived.errored,
           throttled: derived.throttled,
           compacting: derived.compacting,
-          subagentActive: derived.subagentDepth > 0,
+          subagentActive: derived.subagentActive,
+          bgRunning: derived.bgRunning,
+          permissionMode: derived.permissionMode,
           todos: derived.todos,
           origin: src.origin,
         });

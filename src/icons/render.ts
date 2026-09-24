@@ -32,6 +32,12 @@ export interface IconOptions {
   now?: number;
   /** TodoWrite snapshot — renders a left-edge progress column when non-empty. */
   todos?: TodoStatus[];
+  /** Count of running background tasks (subagents/shells). Badge shown only
+   *  when > 0, on interactive-session states. */
+  bgRunning?: number;
+  /** Last-seen permission mode. Badge shown only for bypassPermissions/plan —
+   *  the modes worth flagging at a glance; others render nothing. */
+  permissionMode?: string;
 }
 
 // Left-edge progress column geometry. The column sits at x=2..7, outside the
@@ -81,7 +87,31 @@ function renderBgBadge(accent: string): string {
   return `<text x="16" y="22" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="10" font-weight="700" fill="${accent}" opacity="0.8" text-anchor="start">bg</text>`;
 }
 
-export function renderIcon({ state, slot, label, frame = 0, now, todos }: IconOptions): string {
+/** Colours for the two flagged permission modes — distinct from every session
+ *  state palette so the badge reads as an overlay, not part of the state. */
+const PERMISSION_BADGE: Record<string, { glyph: string; color: string; fontSize: number }> = {
+  bypassPermissions: { glyph: "!!", color: "#ef4444", fontSize: 13 },
+  plan: { glyph: "P", color: "#a78bfa", fontSize: 11 },
+};
+
+/** Top-left corner — the same slot the "bg" tag uses on bg_* states, but those
+ *  states never carry a permissionMode (bg sessions skip the hook pipeline
+ *  entirely), so the two badges never collide on one tile. Only the two modes
+ *  worth a glance render anything; every other mode is silent by design. */
+function renderPermissionBadge(mode: string | undefined): string {
+  const spec = mode !== undefined ? PERMISSION_BADGE[mode] : undefined;
+  if (!spec) return "";
+  return `<text x="16" y="22" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="${spec.fontSize}" font-weight="700" fill="${spec.color}" opacity="0.9" text-anchor="start">${spec.glyph}</text>`;
+}
+
+/** Bottom-left corner — "+N" running background tasks, so an otherwise-idle
+ *  slot still shows work isn't actually done. Uses the state's own accent so
+ *  it reads as part of the tile rather than a competing colour. */
+function renderBgRunningBadge(count: number, accent: string): string {
+  return `<text x="21" y="130" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11" font-weight="700" fill="${accent}" opacity="0.85" text-anchor="start">+${count}</text>`;
+}
+
+export function renderIcon({ state, slot, label, frame = 0, now, todos, bgRunning, permissionMode }: IconOptions): string {
   const t = now ?? Date.now();
   const { bg, accent, label: labelColor } = STATES[state].palette;
   const slotText = state === "empty" ? "" : String(slot);
@@ -129,6 +159,11 @@ export function renderIcon({ state, slot, label, frame = 0, now, todos }: IconOp
   // Slot number badge — inside the safe zone, away from the rounded corner.
   const slotBadge = isEmpty ? "" : renderSlotBadge(slotText, accent);
   const bgBadge = isBgState(state) ? renderBgBadge(accent) : "";
+  // Both overlay badges are interactive-session-only: bg_* states never carry
+  // permissionMode/bgRunning (bg sessions skip the hook pipeline entirely).
+  const interactive = !isEmpty && !isBgState(state);
+  const permissionBadge = interactive ? renderPermissionBadge(permissionMode) : "";
+  const bgRunningBadge = interactive && bgRunning !== undefined && bgRunning > 0 ? renderBgRunningBadge(bgRunning, accent) : "";
 
   let pulseOverlay = "";
   if (STATES[state].pulseBg) {
@@ -148,11 +183,13 @@ ${pulseOverlay}
 <rect x="${BORDER_INSET}" y="${BORDER_INSET}" width="${BORDER_SIZE}" height="${BORDER_SIZE}" rx="${BORDER_RADIUS}" fill="none" stroke="${accent}" stroke-width="${BORDER_STROKE}" stroke-linejoin="round" opacity="${isEmpty ? "0.45" : "0.95"}"/>
 ${slotBadge}
 ${bgBadge}
+${permissionBadge}
 ${topLine}
 <g transform="translate(0,${MOTIF_DY})">${STATES[state].motif(frame, accent)}</g>
 ${line1Svg}
 ${line2Svg}
 ${todoColumn}
+${bgRunningBadge}
 </svg>`;
 }
 

@@ -57,7 +57,9 @@ test("SessionStart with no source still resets state", () => {
     errored: false,
     throttled: false,
     compacting: false,
-    subagentDepth: 0,
+    subagentActive: false,
+    bgRunning: 0,
+    permissionMode: undefined,
     todos: [],
   });
 });
@@ -95,4 +97,67 @@ test("PreCompact sets compacting, PostCompact and Stop clear it", () => {
 
   const stopped = reduceEvents([ev("UserPromptSubmit"), ev("PreCompact"), ev("Stop")]);
   assert.equal(stopped.compacting, false);
+});
+
+test("orphan SubagentStop (unknown agentId) does not end a running subagent", () => {
+  const state = reduceEvents([
+    ev("UserPromptSubmit"),
+    ev("SubagentStart", { agentId: "a" }),
+    ev("SubagentStop", { agentId: "unrelated-internal-agent" }),
+  ]);
+  assert.equal(state.subagentActive, true);
+});
+
+test("bgRunning survives a turn boundary and clears on the next Stop", () => {
+  const afterFirstStop = reduceEvents([ev("UserPromptSubmit"), ev("Stop", { bgRunning: 1 })]);
+  assert.equal(afterFirstStop.bgRunning, 1);
+
+  const afterNextPrompt = reduceEvents([ev("UserPromptSubmit"), ev("Stop", { bgRunning: 1 }), ev("UserPromptSubmit")]);
+  assert.equal(afterNextPrompt.bgRunning, 1);
+
+  const afterSecondStop = reduceEvents([
+    ev("UserPromptSubmit"), ev("Stop", { bgRunning: 1 }),
+    ev("UserPromptSubmit"), ev("Stop", { bgRunning: 0 }),
+  ]);
+  assert.equal(afterSecondStop.bgRunning, 0);
+});
+
+test("a subagent's PermissionRequest is cleared only by that same agent's tool activity", () => {
+  const clearedByOwner = reduceEvents([
+    ev("UserPromptSubmit"),
+    ev("PermissionRequest", { agentId: "A" }),
+    ev("PreToolUse", { tool: "Bash", agentId: "B" }),
+    ev("PreToolUse", { tool: "Bash", agentId: "A" }),
+  ]);
+  assert.equal(clearedByOwner.awaitingPermission, false);
+
+  const notClearedByOther = reduceEvents([
+    ev("UserPromptSubmit"),
+    ev("PermissionRequest", { agentId: "A" }),
+    ev("PreToolUse", { tool: "Bash", agentId: "B" }),
+  ]);
+  assert.equal(notClearedByOther.awaitingPermission, true);
+});
+
+test("legacy Subagent{Start,Stop} lines without agentId still pair +1/-1", () => {
+  const bothRunning = reduceEvents([ev("UserPromptSubmit"), ev("SubagentStart"), ev("SubagentStart")]);
+  assert.equal(bothRunning.subagentActive, true);
+
+  const oneLeft = reduceEvents([ev("UserPromptSubmit"), ev("SubagentStart"), ev("SubagentStart"), ev("SubagentStop")]);
+  assert.equal(oneLeft.subagentActive, true);
+
+  const noneLeft = reduceEvents([
+    ev("UserPromptSubmit"), ev("SubagentStart"), ev("SubagentStart"), ev("SubagentStop"), ev("SubagentStop"),
+  ]);
+  assert.equal(noneLeft.subagentActive, false);
+});
+
+test("permissionMode tracks main-thread events only, ignoring subagent-scoped mode", () => {
+  const state = reduceEvents([
+    ev("SessionStart"),
+    ev("UserPromptSubmit", { mode: "default" }),
+    ev("PreToolUse", { tool: "Bash", agentId: "sub1", mode: "bypassPermissions" }),
+    ev("PreToolUse", { tool: "Bash", mode: "plan" }),
+  ]);
+  assert.equal(state.permissionMode, "plan");
 });

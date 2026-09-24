@@ -36,11 +36,34 @@ Every registered Claude Code hook event appends one JSON line to `~/.claude/sess
 | `PostToolUse[AskUserQuestion]` / `PostToolUseFailure[AskUserQuestion]` | clears `awaitingQuestion` |
 | `StopFailure[rate_limit\|overloaded]` | sets `throttled` (auto-retry, not a real error) |
 | `StopFailure` (other/absent `error_type`) | sets `errored` |
-| `UserPromptSubmit` | clears all `awaiting*` flags + `errored` + `throttled` |
-| `SubagentStart` / `SubagentStop` | bumps `subagentDepth` ±1 |
+| `UserPromptSubmit` | clears all `awaiting*` flags + `errored` + `throttled` + the subagent id set (not `bgRunning` — background work outlives turns) |
+| `SubagentStart` | adds `agentId` to the active-subagent set (or bumps a legacy +1 depth counter if the line predates `agentId`) |
+| `SubagentStop` | removes `agentId` from the set **only if present there** — most `SubagentStop` lines carry a unique `agentId` with no matching `SubagentStart` (CC-internal agents) and must not be treated as ending a real subagent |
 | `SessionEnd` | unlinks the log |
 
 The `notification_type` discrimination requires hooks to capture CC's `notification_type` field into the NDJSON `notifType` column — both `notification.sh` and `notification.ps1` already do this. Older logs without `notifType` fall through to plain `awaiting` (catch-all), so the regression risk is bounded.
+
+### Event log line schema
+
+Each NDJSON line is `{ts, event}` plus whichever of these the hook payload actually carried (all optional, omitted rather than `null`):
+
+| Field | Source | Notes |
+|---|---|---|
+| `tool` | `tool_name` | PreToolUse/PostToolUse/PostToolUseFailure |
+| `notifType` | `notification_type` | Notification only |
+| `source` | `source` | SessionStart only |
+| `errorType` | `error_type` | StopFailure only |
+| `todos` | `tool_input.todos[*].status` | PostToolUse[TodoWrite] only |
+| `agentId` | `agent_id` | Present when the event fired inside a subagent — logged under the **parent** session_id regardless |
+| `agentType` | `agent_type` | Alongside `agentId`; empty/absent for CC-internal agents |
+| `mode` | `permission_mode` | Every event carries this; the reducer only trusts it from a main-thread (no `agentId`) event |
+| `bgRunning` | `background_tasks` | Stop/SubagentStop only, and only when the payload has the field at all — count of entries with `status: "running"` |
+
+### Subagent tracking
+
+`SubagentStart`/`SubagentStop` no longer drive a single depth counter. The reducer keeps a set of active foreground subagent ids (added on `SubagentStart{agentId}`, removed on the matching `SubagentStop{agentId}`) plus a legacy +1/-1 counter for pre-`agentId` log lines. `subagentActive` (exposed on `DerivedState`/`SessionInfo`) is true when either is non-empty/positive. This fixes a real bug: CC emits far more `SubagentStop` than `SubagentStart` (internal agents with a unique `agentId` and no start event), and the old depth-1-per-stop logic made a real running subagent's icon disappear early.
+
+A parallel-agent-safe permission lock rides alongside this: `Notification[permission_prompt]` and `PermissionRequest` record which agent (`agentId`, or `"main"`) raised the prompt. `PreToolUse`/`PostToolUse`/`PostToolUseFailure` only clear `awaitingPermission` when their own `agentId` matches — a subagent B's tool call must not clear subagent A's padlock. `Stop`/`UserPromptSubmit` still clear it unconditionally (turn boundary). `awaitingPlan`/`awaitingQuestion` are unaffected — `ExitPlanMode`/`AskUserQuestion` from a subagent still count, since the user must answer either way.
 
 `PreToolUse` and `PostToolUse` are registered with **empty matcher** (catch-all), so the NDJSON gets one line per tool call. The reducer dispatches by `tool_name` — only `ExitPlanMode`, `AskUserQuestion`, and `TodoWrite` produce state transitions; other tools are no-ops. The trade-off is bigger logs (~1 line per Bash/Edit/Read), but `SessionStart` truncates so it stays bounded per CC run.
 
@@ -78,7 +101,7 @@ Icon code is split per concern across `src/icons/`:
 - `motifs.ts` — animated SVG fragments per state
 - `states.ts` — the single `STATES` registry mapping each `SessionState` to palette + motif + animation flag
 - `text.ts` — label splitting + marquee
-- `render.ts` — composes the final SVG
+- `render.ts` — composes the final SVG, including two overlay badges drawn on interactive-session states only (never on `bg_*`, which don't carry these fields): a bottom-left `+N` for `bgRunning > 0`, and a top-left glyph for `permissionMode` (`bypassPermissions`/`plan` only — other modes render nothing)
 
 ## Reload trigger
 
@@ -93,7 +116,7 @@ Two thin hook scripts mirror each other:
 - `hooks/notification.sh` — Bash, called by Claude Code on Linux/macOS/WSL.
 - `hooks/notification.ps1` — PowerShell, called by Claude Code on Windows.
 
-Both do exactly one thing: read the hook payload from stdin, extract `session_id` + `hook_event_name` (+ optional `tool_name`), and append a single JSON line — `{"ts":…,"event":…,"tool":…?}` — to `<sessionId>.events.ndjson` next to that side's session JSON files. `SessionStart` truncates the log first; `SessionEnd` unlinks it.
+Both do exactly one thing: read the hook payload from stdin, extract `session_id` + `hook_event_name` (+ the optional fields in [Event log line schema](#event-log-line-schema) above), and append a single compact JSON line to `<sessionId>.events.ndjson` next to that side's session JSON files. `SessionStart` truncates the log first; `SessionEnd` unlinks it.
 
 The Windows hook is **not copied** — `scripts/install-hook.sh --target=windows` registers a PowerShell command that runs `hooks/notification.ps1` directly over `\\wsl.localhost\<distro>\…\hooks\notification.ps1`, so a single repo edit propagates to both sides. PID liveness handles the case where a CC process dies hard (no `SessionEnd`): the session disappears from display via `state-tracker.ts`'s `prevLiveIds` check, and the orphan event log is cleaned the next time CC reuses that sessionId (`SessionStart` truncate).
 

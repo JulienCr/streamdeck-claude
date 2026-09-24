@@ -24,13 +24,15 @@ export async function renderAll(
     const state = entry?.state ?? "empty";
     const label = entry?.session.label ?? "";
     const todos = entry?.session.todos;
+    const bgRunning = entry?.session.bgRunning;
+    const permissionMode = entry?.session.permissionMode;
     // Animate the frame when the motif itself animates, OR when an in-progress
     // todo square needs to pulse (renderTodoColumn reads `frame` for the wave).
     const animateFrame = isAnimated(state) || (todos && todos.some((s) => s === "in_progress"));
     const useFrame = animateFrame ? frame : 0;
 
     const svg = entry
-      ? renderIcon({ state, slot: slotIndex, label, frame: useFrame, todos })
+      ? renderIcon({ state, slot: slotIndex, label, frame: useFrame, todos, bgRunning, permissionMode })
       : renderIcon({ state: "empty", slot: slotIndex, label: "", frame: 0 });
     const dataUrl = "data:image/svg+xml;base64," + Buffer.from(svg, "utf8").toString("base64");
 
