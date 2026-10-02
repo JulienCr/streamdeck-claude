@@ -35,8 +35,8 @@ export interface IconOptions {
   /** Count of running background tasks (subagents/shells). Badge shown only
    *  when > 0, on interactive-session states. */
   bgRunning?: number;
-  /** Last-seen permission mode. Badge shown only for bypassPermissions/plan —
-   *  the modes worth flagging at a glance; others render nothing. */
+  /** Last-seen permission mode. Bottom edge recoloured only for
+   *  bypassPermissions/plan; others render nothing. */
   permissionMode?: string;
 }
 
@@ -78,30 +78,22 @@ function renderTodoColumn(todos: readonly TodoStatus[], frame: number): string {
   return rects.join("");
 }
 
-function renderSlotBadge(slotText: string, accent: string): string {
-  return `<text x="128" y="22" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="10" font-weight="700" fill="${accent}" opacity="0.8" text-anchor="end">${xmlEscape(slotText)}</text>`;
-}
-
-function renderBgBadge(accent: string): string {
-  // Coin haut-gauche : 144-128=16 depuis le bord, miroir exact du badge numéro de slot (haut-droite, x=128) → jamais de collision.
-  return `<text x="16" y="22" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="10" font-weight="700" fill="${accent}" opacity="0.8" text-anchor="start">bg</text>`;
-}
-
 /** Colours for the two flagged permission modes — distinct from every session
- *  state palette so the badge reads as an overlay, not part of the state. */
-const PERMISSION_BADGE: Record<string, { glyph: string; color: string; fontSize: number }> = {
-  bypassPermissions: { glyph: "!!", color: "#ef4444", fontSize: 13 },
-  plan: { glyph: "P", color: "#a78bfa", fontSize: 11 },
+ *  state palette so the bottom edge reads as an overlay, not part of the state. */
+const PERMISSION_EDGE: Record<string, string> = {
+  bypassPermissions: "#d9645f",
+  plan: "#a78bfa",
 };
+const BG_EDGE_COLOR = "#6b7280";
 
-/** Top-left corner — the same slot the "bg" tag uses on bg_* states, but those
- *  states never carry a permissionMode (bg sessions skip the hook pipeline
- *  entirely), so the two badges never collide on one tile. Only the two modes
- *  worth a glance render anything; every other mode is silent by design. */
-function renderPermissionBadge(mode: string | undefined): string {
-  const spec = mode !== undefined ? PERMISSION_BADGE[mode] : undefined;
-  if (!spec) return "";
-  return `<text x="16" y="22" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="${spec.fontSize}" font-weight="700" fill="${spec.color}" opacity="0.9" text-anchor="start">${spec.glyph}</text>`;
+/** Recolours the bottom edge of the border (including both lower corners). */
+function renderBottomEdge(color: string | undefined): string {
+  if (!color) return "";
+  const r = BORDER_RADIUS;
+  const left = BORDER_INSET;
+  const right = BORDER_INSET + BORDER_SIZE;
+  const bottom = BORDER_INSET + BORDER_SIZE;
+  return `<path d="M${left} ${bottom - r} A${r} ${r} 0 0 0 ${left + r} ${bottom} H${right - r} A${r} ${r} 0 0 0 ${right} ${bottom - r}" fill="none" stroke="${color}" stroke-width="${BORDER_STROKE}" stroke-linecap="round"/>`;
 }
 
 /** "+N" running background tasks, so an idle slot still shows work isn't done.
@@ -114,7 +106,6 @@ function renderBgRunningBadge(count: number, accent: string): string {
 export function renderIcon({ state, slot, label, frame = 0, now, todos, bgRunning, permissionMode }: IconOptions): string {
   const t = now ?? Date.now();
   const { bg, accent, label: labelColor } = STATES[state].palette;
-  const slotText = state === "empty" ? "" : String(slot);
   const isEmpty = state === "empty";
   const { top, line1, line2 } = isEmpty
     ? { top: "free slot", line1: "", line2: "" }
@@ -156,13 +147,15 @@ export function renderIcon({ state, slot, label, frame = 0, now, todos, bgRunnin
       })
     : "";
 
-  // Slot number badge — inside the safe zone, away from the rounded corner.
-  const slotBadge = isEmpty ? "" : renderSlotBadge(slotText, accent);
-  const bgBadge = isBgState(state) ? renderBgBadge(accent) : "";
-  // Both overlay badges are interactive-session-only: bg_* states never carry
+  // Both overlays are interactive-session-only: bg_* states never carry
   // permissionMode/bgRunning (bg sessions skip the hook pipeline entirely).
   const interactive = !isEmpty && !isBgState(state);
-  const permissionBadge = interactive ? renderPermissionBadge(permissionMode) : "";
+  const edgeColor = isBgState(state)
+    ? BG_EDGE_COLOR
+    : interactive && permissionMode !== undefined
+      ? PERMISSION_EDGE[permissionMode]
+      : undefined;
+  const bottomEdge = renderBottomEdge(edgeColor);
   const bgRunningBadge = interactive && bgRunning !== undefined && bgRunning > 0 ? renderBgRunningBadge(bgRunning, accent) : "";
 
   let pulseOverlay = "";
@@ -181,9 +174,7 @@ export function renderIcon({ state, slot, label, frame = 0, now, todos, bgRunnin
 <rect width="144" height="144" fill="${bg}"/>
 ${pulseOverlay}
 <rect x="${BORDER_INSET}" y="${BORDER_INSET}" width="${BORDER_SIZE}" height="${BORDER_SIZE}" rx="${BORDER_RADIUS}" fill="none" stroke="${accent}" stroke-width="${BORDER_STROKE}" stroke-linejoin="round" opacity="${isEmpty ? "0.45" : "0.95"}"/>
-${slotBadge}
-${bgBadge}
-${permissionBadge}
+${bottomEdge}
 ${topLine}
 <g transform="translate(0,${MOTIF_DY})">${STATES[state].motif(frame, accent)}</g>
 ${line1Svg}
@@ -244,12 +235,10 @@ export function renderKillArming({ slot, label, progress, now }: KillArmingOptio
     now: t,
     idSuffix: `k${slot}`,
   });
-  const slotBadge = renderSlotBadge(String(slot), KILL_ACCENT);
   return `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">
 <rect width="144" height="144" fill="${KILL_BG}"/>
 <rect width="144" height="144" fill="${KILL_ACCENT}" opacity="${overlayOpacity}"/>
 <rect x="${BORDER_INSET}" y="${BORDER_INSET}" width="${BORDER_SIZE}" height="${BORDER_SIZE}" rx="${BORDER_RADIUS}" fill="none" stroke="${KILL_ACCENT}" stroke-width="${BORDER_STROKE}" stroke-linejoin="round" opacity="0.95"/>
-${slotBadge}
 ${topLine}
 <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#3a1414" stroke-width="6"/>
 <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${KILL_ACCENT}" stroke-width="6" stroke-linecap="round" stroke-dasharray="${circ.toFixed(2)}" stroke-dashoffset="${offset}" transform="rotate(-90 ${cx} ${cy})"/>
