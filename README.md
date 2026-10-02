@@ -31,11 +31,11 @@ Two subtle overlays ride on top of any interactive-session state, so they're vis
 | | Badge | Meaning |
 |---|---|---|
 | <img src="icons/badge-bg-running.svg" width="64" alt="background tasks running"> | `+N` (left edge) | N background tasks (subagents launched in the background, or shells) are still running — the session isn't actually done even if it looks idle |
-| <img src="icons/badge-bypass.svg" width="64" alt="bypassPermissions mode"> | `!!` (top-left, red) | Session is in `bypassPermissions` mode — every tool call runs unconfirmed |
-| <img src="icons/badge-plan.svg" width="64" alt="plan mode"> | `P` (top-left, violet) | Session is in `plan` mode |
+| <img src="icons/badge-bypass.svg" width="64" alt="bypassPermissions mode"> | Bottom edge of the border, soft red | Session is in `bypassPermissions` mode — every tool call runs unconfirmed |
+| <img src="icons/badge-plan.svg" width="64" alt="plan mode"> | Bottom edge of the border, violet | Session is in `plan` mode |
 | <img src="icons/badge-both.svg" width="64" alt="both badges"> | both | Both badges can appear together |
 
-Other permission modes (`default`, `acceptEdits`, `auto`, `dontAsk`) render no badge — only the two worth a glance at a distance.
+Other permission modes (`default`, `acceptEdits`, `auto`, `dontAsk`) keep the default border — only the two worth a glance at a distance. Background (`bg_*`) sessions get a grey bottom edge.
 
 ## Features
 
