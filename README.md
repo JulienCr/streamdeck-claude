@@ -42,6 +42,7 @@ Other permission modes (`default`, `acceptEdits`, `auto`, `dontAsk`) keep the de
 - **Live per-session state** — sessions auto-fill the slots in start-time order; excess sessions beyond the slot count are simply not displayed.
 - **Press → copy `cwd`** to clipboard.
 - **Press → focus matching Warp tab** (macOS + Windows). See [`docs/warp-focus.md`](docs/warp-focus.md).
+- **Press → activate the Claude desktop app** (macOS, `open -a Claude`), after the Warp focus — so Claude Desktop ends up in front.
 - **Long-press (≥500 ms) → reset that session's state log** — useful if a stuck `awaiting` lingers.
 - **Setup key** — wipes all event logs and re-renders every slot in one press. Also self-checks the hook registration: if it's stale or missing (icons would silently break — e.g. a permission padlock that never clears), the key shows an amber **HOOKS** warning. Fix with `pnpm install:hook`, then reload.
 

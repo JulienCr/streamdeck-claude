@@ -10,6 +10,7 @@ import streamDeck, {
 import { platform } from "node:os";
 import type { SessionOrigin } from "./sessions.js";
 import { focusWarpTabForCwd } from "./warp-focus.js";
+import { activateClaudeDesktop } from "./claude-desktop-focus.js";
 import { spawnCapture } from "./spawn-capture.js";
 
 /** Hold ≥ this long → wipe just this agent's event log (palier 1). */
@@ -161,6 +162,10 @@ export class SlotAction extends SingletonAction {
       await copyToClipboard(cwd);
       const res = await focusWarpTabForCwd(cwd);
       streamDeck.logger.info(`warp focus: ${res.reason} for cwd=${cwd}`);
+      // After Warp, so the Warp keystroke still lands while Warp is frontmost;
+      // Claude Desktop ends up in front.
+      const desktop = await activateClaudeDesktop();
+      streamDeck.logger.info(`claude desktop: ${desktop.reason}`);
       await ev.action.showOk();
     } catch (err) {
       streamDeck.logger.error("clipboard copy failed", err);

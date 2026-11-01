@@ -146,6 +146,7 @@ The Windows hook is **not copied** — `scripts/install-hook.sh --target=windows
 │   ├── warp-focus-win.ts                 # PowerShell + AttachThreadInput + SendInput
 │   ├── warp-db.ts                        # read-only sqlite3 → (window, tab_index)
 │   ├── warp-cwd.ts                       # Windows UNC / drive normalizer for WSL paths
+│   ├── claude-desktop-focus.ts           # macOS: open -a Claude on slot press
 │   └── icons/                            # render pipeline (theme/motifs/states/text/render)
 ├── icons/                                # standalone reference SVGs (one per state)
 ├── hooks/
