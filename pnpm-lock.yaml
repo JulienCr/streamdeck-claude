@@ -11,6 +11,9 @@ importers:
       '@elgato/streamdeck':
         specifier: ^1.0.0
         version: 1.4.1
+      streamdeck-claude:
+        specifier: 'link:'
+        version: 'link:'
     devDependencies:
       '@elgato/cli':
         specifier: ^1.7.4

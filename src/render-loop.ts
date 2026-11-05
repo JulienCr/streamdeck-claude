@@ -39,6 +39,7 @@ export async function renderAll(
     const slotState = slotAction.getState(action.id);
     if (!slotState) continue;
     slotState.clipboardPayload = entry?.session.cwd;
+    slotState.warpFocusUrl = entry?.session.warpFocusUrl;
     slotState.sessionId = entry?.session.sessionId;
     slotState.origin = entry?.session.origin;
     slotState.pid = entry?.session.pid;
