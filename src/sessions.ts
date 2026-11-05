@@ -98,6 +98,8 @@ export interface SessionInfo {
   /** Last permission mode seen on a main-thread event: default/plan/acceptEdits/
    *  auto/dontAsk/bypassPermissions. Undefined until a hook reports one. */
   permissionMode?: string;
+  /** Warp deep-link (`warp://session/<uuid>`) of the pane running this session, if the hook saw one. */
+  warpFocusUrl?: string;
   /** Snapshot of the last TodoWrite call's statuses; empty if none seen. */
   todos: TodoStatus[];
   origin: SessionOrigin;
@@ -205,6 +207,7 @@ async function readOneSource(src: SessionSourceDir): Promise<SessionInfo[]> {
           subagentActive: derived.subagentActive,
           bgRunning: derived.bgRunning,
           permissionMode: derived.permissionMode,
+          warpFocusUrl: derived.warpFocusUrl,
           todos: derived.todos,
           origin: src.origin,
         });

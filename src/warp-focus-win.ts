@@ -2,6 +2,7 @@ import streamDeck from "@elgato/streamdeck";
 import { describeTopPanes, pickBestPane, readWarpPanes } from "./warp-db.js";
 import type { WarpFocusResult } from "./warp-focus.js";
 import { spawnCapture } from "./spawn-capture.js";
+import { WARP_FOCUS_URL_RE } from "./session-events.js";
 
 /**
  * Best-effort focus of the Warp tab corresponding to `cwd` on Windows.
@@ -87,6 +88,32 @@ export async function focusWarpTabOnWin(cwd: string): Promise<WarpFocusResult> {
   };
 }
 
+/**
+ * Opens a Warp session deep-link (`warp://session/<uuid>`) so Warp itself
+ * finds and focuses the pane. Same AttachThreadInput dance as `buildScript`
+ * because Warp's own SetForegroundWindow is refused while we lack the lock;
+ * ASFW_ANY (-1) then lets the launched Warp process take it.
+ */
+export async function openWarpUrlOnWin(
+  url: string,
+): Promise<{ ok: true; out: string } | { ok: false; error: string }> {
+  // Re-checked here: the URL is single-quote-interpolated into a script.
+  if (!WARP_FOCUS_URL_RE.test(url)) return { ok: false, error: "invalid-url" };
+  const script = `${TYPES_GUARD}
+$cur = [W]::GetCurrentThreadId()
+$dummy = [uint32]0
+$fg = [W]::GetWindowThreadProcessId([W]::GetForegroundWindow(), [ref]$dummy)
+$attached = $false
+if ($fg -ne $cur) { $attached = [W]::AttachThreadInput($fg, $cur, $true) }
+$asfw = [W]::AllowSetForegroundWindow(-1)
+Start-Process '${url}'
+Start-Sleep -Milliseconds 300
+if ($attached) { [W]::AttachThreadInput($fg, $cur, $false) | Out-Null }
+Write-Output ("OK attach={0} asfw={1}" -f $attached, $asfw)
+`;
+  return runPowerShell(script, 4000);
+}
+
 /** Pick the shorter direction around a circular tab strip of `total` tabs. */
 function shortestCycle(
   from: number,
@@ -149,7 +176,7 @@ Write-Output ("OK attach={0} sfw={1} fgWasWarp={2} h={3} fgNow={4}" -f $attached
  * handles both). `MOUSEINPUT` is wider than `KEYBDINPUT`, so it has to
  * be declared even though we only set the keyboard variant.
  */
-const TYPES_GUARD = `if (-not ('W' -as [type])) {
+export const TYPES_GUARD = `if (-not ('W' -as [type])) {
 Add-Type @'
 using System;
 using System.Runtime.InteropServices;
@@ -160,6 +187,7 @@ public class W {
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
   [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint t1, uint t2, bool attach);
+  [DllImport("user32.dll")] public static extern bool AllowSetForegroundWindow(int pid);
   [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
   [StructLayout(LayoutKind.Sequential)]
   public struct MOUSEINPUT { public int dx, dy; public uint mouseData, dwFlags, time; public IntPtr dwExtraInfo; }
@@ -186,7 +214,7 @@ public class W {
 '@
 }`;
 
-async function runPowerShell(
+export async function runPowerShell(
   script: string,
   timeoutMs: number,
 ): Promise<{ ok: true; out: string } | { ok: false; error: string }> {

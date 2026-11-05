@@ -61,7 +61,7 @@ Icon code is split per concern across `src/icons/`: `theme.ts` (constants), `mot
 
 ### Warp tab focus on slot press (`src/warp-focus*.ts`, `src/warp-db.ts`, `src/warp-cwd.ts`)
 
-Pressing a slot key tries to bring the Warp terminal tab whose cwd matches the session forward (best-effort, no-op on unsupported platforms). `warp-focus.ts` dispatches by `process.platform`: macOS via `warp-focus-mac.ts` (AppleScript), Windows via `warp-focus-win.ts` (Warp's local SQLite tab DB read through `warp-db.ts` + Win32 window activation). Clipboard fallback (the session cwd) still runs regardless so the user always has something to paste if no tab matched. `scripts/check-warp` is a CLI sanity-check for the Warp DB read path.
+Pressing a slot key copies the session cwd, then focuses the Warp pane (best-effort, no-op on unsupported platforms). **Primary path:** the hooks record Warp's `WARP_FOCUS_URL` on every event line, `parseEventLog` validates it (`^warp[a-z]*://session/[0-9a-f]{32}$`, it reaches `open` / `Start-Process`), and the press opens it. **Fallback**, only when no URL is known or opening fails: the cwd → SQLite → keystroke heuristic (`warp-focus-mac.ts` / `warp-focus-win.ts`, `warp-db.ts`). `warp-focus.ts` dispatches by `process.platform`. Details and caveats in `docs/warp-focus.md`; `scripts/check-warp` sanity-checks the DB read path.
 
 ### Reload trigger (`src/reload-watcher.ts`)
 

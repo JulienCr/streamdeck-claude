@@ -105,6 +105,9 @@ if ($errorType)            { $entry.errorType  = $errorType }
 if ($agentId)              { $entry.agentId    = $agentId }
 if ($agentType)            { $entry.agentType  = $agentType }
 if ($mode)                 { $entry.mode       = $mode }
+# Warp injects WARP_FOCUS_URL into every pane's shell; logged on every line so
+# a wiped log recovers it on the next event.
+if ($env:WARP_FOCUS_URL)   { $entry.warp       = $env:WARP_FOCUS_URL }
 if ($null -ne $todos)      { $entry.todos      = $todos }
 if ($null -ne $bgRunning)  { $entry.bgRunning  = $bgRunning }
 $line = $entry | ConvertTo-Json -Compress

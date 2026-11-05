@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { reduceEvents, type SessionEvent } from "./session-events.js";
+import { parseEventLog, reduceEvents, type SessionEvent } from "./session-events.js";
 
 function ev(event: string, extra: Partial<SessionEvent> = {}): SessionEvent {
   return { ts: 0, event, ...extra };
@@ -60,6 +60,7 @@ test("SessionStart with no source still resets state", () => {
     subagentActive: false,
     bgRunning: 0,
     permissionMode: undefined,
+    warpFocusUrl: undefined,
     todos: [],
   });
 });
@@ -164,4 +165,34 @@ test("permissionMode tracks main-thread events only, ignoring subagent-scoped mo
     ev("PreToolUse", { tool: "Bash", mode: "plan" }),
   ]);
   assert.equal(state.permissionMode, "plan");
+});
+
+const WARP_A = "warp://session/69b44ef2affe4421bf2d764dca7fd09f";
+const WARP_B = "warppreview://session/0123456789abcdef0123456789abcdef";
+
+function replay(...warps: unknown[]): string | undefined {
+  const text = warps.map((w, i) => JSON.stringify({ ts: i, event: "PreToolUse", ...(w === undefined ? {} : { warp: w }) })).join("\n");
+  return reduceEvents(parseEventLog(text)).warpFocusUrl;
+}
+
+test("warpFocusUrl latches across later events lacking it and is replaced by a later valid one", () => {
+  assert.equal(replay(WARP_A, undefined, undefined), WARP_A);
+  assert.equal(replay(WARP_A, undefined, WARP_B), WARP_B);
+  const sub = parseEventLog(JSON.stringify({ ts: 0, event: "PreToolUse", agentId: "s1", warp: WARP_A }));
+  assert.equal(reduceEvents(sub).warpFocusUrl, WARP_A);
+});
+
+test("warpFocusUrl drops anything but a warp session deep-link with a 32-hex lowercase uuid", () => {
+  const bad = [
+    "warp://action/new_tab?path=/tmp",
+    "https://evil/session/69b44ef2affe4421bf2d764dca7fd09f",
+    "warp://session/69B44EF2AFFE4421BF2D764DCA7FD09F",
+    "warp://session/69b44ef2affe4421bf2d764dca7fd09",
+    "warp://session/69b44ef2-affe-4421-bf2d-764dca7fd09f",
+    "warp://session/69b44ef2affe4421bf2d764dca7fd09f'; calc",
+    42,
+    null,
+  ];
+  for (const w of bad) assert.equal(replay(w), undefined, String(w));
+  assert.equal(replay(WARP_A, "warp://action/new_tab?path=/tmp"), WARP_A);
 });

@@ -29,6 +29,9 @@ ERROR_TYPE="$(printf '%s' "$INPUT" | jq -r '.error_type // empty' 2>/dev/null ||
 AGENT_ID="$(printf '%s' "$INPUT" | jq -r '.agent_id // empty' 2>/dev/null || true)"
 AGENT_TYPE="$(printf '%s' "$INPUT" | jq -r '.agent_type // empty' 2>/dev/null || true)"
 MODE="$(printf '%s' "$INPUT" | jq -r '.permission_mode // empty' 2>/dev/null || true)"
+# Warp injects WARP_FOCUS_URL into every pane's shell; we inherit it from claude.
+# Logged on every line so a wiped log recovers it on the next event.
+WARP="${WARP_FOCUS_URL:-}"
 
 if [ -z "${SESSION_ID:-}" ] || [ -z "${EVENT:-}" ]; then
   echo '{}'
@@ -87,6 +90,7 @@ jq -nc \
   --arg agentId "$AGENT_ID" \
   --arg agentType "$AGENT_TYPE" \
   --arg mode "$MODE" \
+  --arg warp "$WARP" \
   --argjson todos "$TODOS_JSON" \
   --argjson bgRunning "$BG_RUNNING_JSON" \
   '{ts: $ts, event: $event}
@@ -97,6 +101,7 @@ jq -nc \
    | (if $agentId   != ""   then . + {agentId:   $agentId}   else . end)
    | (if $agentType != ""   then . + {agentType: $agentType} else . end)
    | (if $mode      != ""   then . + {mode:      $mode}      else . end)
+   | (if $warp      != ""   then . + {warp:      $warp}      else . end)
    | (if $todos     != null then . + {todos:     $todos}     else . end)
    | (if $bgRunning != null then . + {bgRunning: $bgRunning} else . end)' \
   >> "$TARGET"

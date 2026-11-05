@@ -9,7 +9,7 @@ import streamDeck, {
 } from "@elgato/streamdeck";
 import { platform } from "node:os";
 import type { SessionOrigin } from "./sessions.js";
-import { focusWarpTabForCwd } from "./warp-focus.js";
+import { focusWarp } from "./warp-focus.js";
 import { spawnCapture } from "./spawn-capture.js";
 
 /** Hold ≥ this long → wipe just this agent's event log (palier 1). */
@@ -24,6 +24,8 @@ export interface SlotState {
   lastSvg?: string;
   /** What we copy to the clipboard when the key is short-pressed. */
   clipboardPayload?: string;
+  /** Warp deep-link of the bound session's pane; preferred over cwd matching. */
+  warpFocusUrl?: string;
   /** Bound session — used by long-press to wipe just this agent's event log. */
   sessionId?: string;
   origin?: SessionOrigin;
@@ -159,7 +161,7 @@ export class SlotAction extends SingletonAction {
     }
     try {
       await copyToClipboard(cwd);
-      const res = await focusWarpTabForCwd(cwd);
+      const res = await focusWarp({ cwd, warpFocusUrl: slot?.warpFocusUrl });
       streamDeck.logger.info(`warp focus: ${res.reason} for cwd=${cwd}`);
       await ev.action.showOk();
     } catch (err) {

@@ -33,7 +33,13 @@ export interface SessionEvent {
   /** Present only on Stop/SubagentStop when the payload carries `background_tasks`
    *  — count of entries with status "running" (background subagents/shells). */
   bgRunning?: number;
+  /** Validated `WARP_FOCUS_URL` captured by the hook (see WARP_FOCUS_URL_RE). */
+  warp?: string;
 }
+
+/** Only Warp session deep-links may reach `open` / `Start-Process`: this
+ *  regex is the security gate for the hook-supplied value. */
+export const WARP_FOCUS_URL_RE = /^warp[a-z]*:\/\/session\/[0-9a-f]{32}$/;
 
 /** What the icon needs, derived from the event log. The session's busy/idle
  *  flag still comes from the session JSON's `status` field — that's CC's own
@@ -65,6 +71,8 @@ export interface DerivedState {
   bgRunning: number;
   /** Last permission mode seen on a main-thread (no agentId) event. */
   permissionMode?: string;
+  /** Last valid Warp focus URL seen on any event (main thread or subagent). */
+  warpFocusUrl?: string;
   /** Most recent TodoWrite snapshot; empty until the agent calls TodoWrite. */
   todos: TodoStatus[];
 }
@@ -92,7 +100,7 @@ interface ReducerState extends Omit<DerivedState, "subagentActive"> {
 const ZERO: ReducerState = {
   awaiting: false, awaitingPermission: false, awaitingQuestion: false, awaitingPlan: false,
   errored: false, throttled: false, compacting: false,
-  bgRunning: 0, permissionMode: undefined,
+  bgRunning: 0, permissionMode: undefined, warpFocusUrl: undefined,
   todos: [], inTurn: false,
   activeSubagents: new Set(), legacySubagentDepth: 0, pendingPermissionAgent: undefined,
 };
@@ -127,7 +135,9 @@ function applyEvent(prev: ReducerState, ev: SessionEvent): ReducerState {
   const next = applyEventCore(prev, ev);
   // permission_mode rides on every hook payload; only a main-thread (no
   // agentId) event reflects the top-level session's mode.
-  return ev.mode !== undefined && ev.agentId === undefined ? { ...next, permissionMode: ev.mode } : next;
+  const withMode = ev.mode !== undefined && ev.agentId === undefined ? { ...next, permissionMode: ev.mode } : next;
+  // Same process env for main thread and subagents, so any event may carry it.
+  return ev.warp !== undefined ? { ...withMode, warpFocusUrl: ev.warp } : withMode;
 }
 
 function applyEventCore(state: ReducerState, ev: SessionEvent): ReducerState {
@@ -271,6 +281,7 @@ export function parseEventLog(text: string): SessionEvent[] {
           agentType: typeof obj.agentType === "string" ? obj.agentType : undefined,
           mode: typeof obj.mode === "string" ? obj.mode : undefined,
           bgRunning: typeof obj.bgRunning === "number" ? obj.bgRunning : undefined,
+          warp: typeof obj.warp === "string" && WARP_FOCUS_URL_RE.test(obj.warp) ? obj.warp : undefined,
         });
       }
     } catch {

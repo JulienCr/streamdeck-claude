@@ -36,6 +36,12 @@
     "typescript": "^5.2.2"
   },
   "dependencies": {
-    "@elgato/streamdeck": "^1.0.0"
+    "@elgato/streamdeck": "^1.0.0",
+    "streamdeck-claude": "link:"
+  },
+  "pnpm": {
+    "overrides": {
+      "streamdeck-claude": "link:"
+    }
   }
 }
