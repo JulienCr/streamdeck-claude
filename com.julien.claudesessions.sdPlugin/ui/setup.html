@@ -69,6 +69,12 @@
       font-style: italic;
       text-align: center;
     }
+    .build-info {
+      margin-top: 14px;
+      color: #6b7280;
+      font-size: 10px;
+      text-align: center;
+    }
   </style>
 </head>
 <body>
@@ -85,6 +91,8 @@
     <h3>More settings</h3>
     <div class="placeholder">Future controls will land here.</div>
   </section>
+
+  <div id="build-info" class="build-info"></div>
 
   <script>
     let ws;
@@ -143,6 +151,25 @@
         setStatus("Wiped " + payload.wiped + " logs, " + errs.length + " error" + (errs.length === 1 ? "" : "s") + ". See plugin log.", "error");
       }
     }
+
+    function renderBuildInfo(info) {
+      const el = document.getElementById("build-info");
+      let date;
+      try {
+        // fr-FR dd/mm/yyyy hh:mm, in the viewer's own timezone.
+        date = new Intl.DateTimeFormat("fr-FR", {
+          day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
+        }).format(new Date(info.builtAt));
+      } catch {
+        date = info.builtAt;
+      }
+      el.textContent = "v" + info.version + " · " + info.commit + " · " + date;
+    }
+
+    fetch("../bin/build-info.json?t=" + Date.now(), { cache: "no-store" })
+      .then((res) => res.json())
+      .then(renderBuildInfo)
+      .catch(() => {});
 
     document.getElementById("refresh").addEventListener("click", () => {
       const btn = document.getElementById("refresh");

@@ -19,11 +19,12 @@ pnpm sd:link / sd:unlink           # (re)create the Windows-side mklink /D into 
 pnpm install:hook                  # register every event feeding reduceEvents into WSL ~/.claude/settings.json
 pnpm install:hook:windows          # same for Windows %USERPROFILE%\.claude\settings.json (no copy — registers the .ps1 over UNC)
 pnpm check:hooks                   # diff installed hook config against what install-hook.sh would write
+pnpm check:vscode                  # enumerate VS Code windows + show which one matches a given cwd (debug)
 pnpm icons:render       # regenerate icons/*.svg reference assets from src/icons/
 pnpm icons:static       # rasterize manifest PNGs from assets/svg/ via @resvg/resvg-js
 ```
 
-There is **no test suite and no lint script**. Verify by `pnpm build && pnpm sd:validate && pnpm sd:reload`, then watch logs at `%APPDATA%\Elgato\StreamDeck\Plugins\com.julien.claudesessions.sdPlugin\logs\`.
+`pnpm test` runs a small `node:test` suite (`src/*.test.ts`: the `reduceEvents` state machine, terminal-kind coercion, VS Code window matching); there is no lint script. Verify by `pnpm test && pnpm build && pnpm sd:validate && pnpm sd:reload`, then watch logs at `%APPDATA%\Elgato\StreamDeck\Plugins\com.julien.claudesessions.sdPlugin\logs\`.
 
 The Elgato `streamdeck restart` / `streamdeck list` commands fail from WSL with `EIO` because they `readlink` a UNC-targeted symlink — use `pnpm sd:reload` instead. First time after building, you still need to quit + relaunch the SD app once so the new bundle picks up the reload-watcher.
 
@@ -59,9 +60,29 @@ State priority for an idle session: `awaiting_plan` > `awaiting` > plain `idle`.
 
 Icon code is split per concern across `src/icons/`: `theme.ts` (constants), `motifs.ts` (animated SVG fragments per state), `states.ts` (the single `STATES` registry mapping each `SessionState` to palette + motif + animated flag), `text.ts` (label splitting + marquee), `render.ts` (compose the final SVG). Adding a new state = one entry in `STATES` + plumb it through `deriveState`.
 
-### Warp tab focus on slot press (`src/warp-focus*.ts`, `src/warp-db.ts`, `src/warp-cwd.ts`)
+### Terminal focus on slot press (`src/terminal-focus.ts` + per-backend modules)
 
-Pressing a slot key tries to bring the Warp terminal tab whose cwd matches the session forward (best-effort, no-op on unsupported platforms). `warp-focus.ts` dispatches by `process.platform`: macOS via `warp-focus-mac.ts` (AppleScript), Windows via `warp-focus-win.ts` (Warp's local SQLite tab DB read through `warp-db.ts` + Win32 window activation). Clipboard fallback (the session cwd) still runs regardless so the user always has something to paste if no tab matched. `scripts/check-warp` is a CLI sanity-check for the Warp DB read path.
+Pressing a slot key tries to bring the terminal hosting the session forward
+(best-effort, no-op when unmatched). `src/terminal-focus.ts` dispatches by the
+session's `terminal` kind — stamped at `SessionStart` by the hook from
+`$TERM_PROGRAM` / `VSCODE_*` and reduced into `SessionInfo.terminal` (kept across
+compaction; a wiped event log reads as `unknown` until the next `SessionStart`):
+
+- **warp** → `warp-focus.ts` (macOS AppleScript / Windows Warp sqlite DB +
+  Win32 keystroke). See `src/warp-db.ts`, `src/warp-cwd.ts`.
+- **vscode** → `vscode-focus.ts`: raise the best-matching VS Code *window*
+  (title-based scoring in `vscode-window-match.ts`; Windows enumerates via
+  `Get-Process Code` + raises the HWND, macOS via System Events `AXRaise`).
+  Window-level only — no integrated-terminal-tab precision.
+- **iterm** → placeholder (not implemented).
+- **other** → bare terminal, nothing to raise.
+- **unknown** → back-compat: try Warp, then VS Code.
+
+The Win32 foreground machinery (P/Invoke bundle + `runPowerShell`) is shared by
+the Warp and VS Code Windows backends in `src/win32-raise.ts`. Clipboard
+fallback (the session cwd) runs regardless so the user always has something to
+paste. `scripts/check-warp` and `scripts/check-vscode.ts` are CLI sanity-checks
+for the two read paths.
 
 ### Reload trigger (`src/reload-watcher.ts`)
 
@@ -69,7 +90,7 @@ Pressing a slot key tries to bring the Warp terminal tab whose cwd matches the s
 
 ### Hook pipeline (`hooks/` + `scripts/install-hook.sh`)
 
-Every registered Claude Code event runs the same hook script (`notification.sh` on WSL, `notification.ps1` on Windows). Both do exactly one thing: append a single JSON line — `{"ts":…,"event":…,"tool":…?}` — to `~/.claude/sessions/<sid>.events.ndjson`. There is no mapping table; the bash and PowerShell scripts are tiny mirrors of each other. `SessionStart` truncates the log first (clean reset, bounds long-lived sessions); `SessionEnd` unlinks it.
+Every registered Claude Code event runs the same hook script (`notification.sh` on WSL, `notification.ps1` on Windows). Both do exactly one thing: append a single JSON line — `{"ts":…,"event":…}` plus optional fields (see `docs/architecture.md`) — to `~/.claude/sessions/<sid>.events.ndjson`. There is no mapping table; the bash and PowerShell scripts are tiny mirrors of each other. `SessionStart` truncates the log first (clean reset, bounds long-lived sessions), except `source=compact`; `SessionEnd` unlinks it.
 
 The plugin reads each session's event log every tick and replays it through the pure state machine in `src/session-events.ts` (`reduceEvents`). That function is the single source of truth for state transitions — adding a new state means one new case there plus registering the event in `install-hook.sh`. No `events.json`, no per-state sidecar files, no mtime/TTL/grace heuristics.
 
@@ -82,4 +103,4 @@ The Windows hook is **not copied** — `install-hook.sh --target=windows` regist
 - Two Stream Deck actions are registered: `com.julien.claudesessions.slot` (one key per live CC session, in `src/slot-action.ts`) and `com.julien.claudesessions.setup` (a single maintenance key, in `src/setup-action.ts`). Both use the `@action({ UUID: "..." })` decorator AND must be passed to `streamDeck.actions.registerAction(...)` — the decorator alone is not enough.
 - The Setup action's key press (and its property inspector "Refresh States" button) calls `refreshNow()` in `plugin.ts`, which `wipeAllEventLogs()` (deletes every `<sid>.events.ndjson` across both source dirs) then runs an immediate `runSlowTick()`. The PI uses raw WebSocket against the Elgato bridge (`connectElgatoStreamDeckSocket`) — the SDK's TS API is plugin-side only.
 - Background context for Stream Deck plugin development inside WSL lives in the local skill `streamdeck-plugin-wsl` (`.claude/skills/`); session-introspection internals (the `<pid>.json` schema, dual-namespace liveness, hook patterns) are in `claude-code-process-introspection`. Invoke them via the `Skill` tool when relevant.
-- `docs/` holds reference notes (`architecture.md`, `development.md`, `warp-focus*.md`). `docs/code-refacto.md` specifically is an audit doc, not authoritative — treat as a record of considered ideas, not a TODO list.
+- `docs/` holds reference notes (`architecture.md`, `development.md`, `warp-focus*.md`, `vscode-focus.md`). `docs/code-refacto.md` specifically is an audit doc, not authoritative — treat as a record of considered ideas, not a TODO list.

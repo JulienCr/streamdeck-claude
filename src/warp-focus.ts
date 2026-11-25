@@ -1,12 +1,10 @@
 import { platform } from "node:os";
+import type { FocusResult } from "./terminal-focus.js";
 import { focusWarpTabOnMac } from "./warp-focus-mac.js";
 import { focusWarpTabOnWin } from "./warp-focus-win.js";
 
-/** Outcome of attempting to focus a Warp tab matching a session's cwd. */
-export interface WarpFocusResult {
-  matched: boolean;
-  reason: string;
-}
+/** Back-compat alias — Warp's result is the shared focus-result shape. */
+export type WarpFocusResult = FocusResult;
 
 /**
  * Dispatch to the platform-specific Warp tab focus implementation. Callers

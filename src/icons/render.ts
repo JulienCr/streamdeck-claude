@@ -12,7 +12,7 @@ import {
   VIEWPORT_W,
 } from "./theme.js";
 import { approxWidth, splitLabel, textLine, xmlEscape } from "./text.js";
-import { STATES, type SessionState } from "./states.js";
+import { STATES, isBgState, type SessionState } from "./states.js";
 import { ANIMATION_FRAMES } from "./motifs.js";
 import type { TodoStatus } from "../session-events.js";
 
@@ -32,6 +32,12 @@ export interface IconOptions {
   now?: number;
   /** TodoWrite snapshot — renders a left-edge progress column when non-empty. */
   todos?: TodoStatus[];
+  /** Count of running background tasks (subagents/shells). Badge shown only
+   *  when > 0, on interactive-session states. */
+  bgRunning?: number;
+  /** Last-seen permission mode. Bottom edge recoloured only for
+   *  bypassPermissions/plan; others render nothing. */
+  permissionMode?: string;
 }
 
 // Left-edge progress column geometry. The column sits at x=2..7, outside the
@@ -72,14 +78,34 @@ function renderTodoColumn(todos: readonly TodoStatus[], frame: number): string {
   return rects.join("");
 }
 
-function renderSlotBadge(slotText: string, accent: string): string {
-  return `<text x="128" y="22" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="10" font-weight="700" fill="${accent}" opacity="0.8" text-anchor="end">${xmlEscape(slotText)}</text>`;
+/** Colours for the two flagged permission modes — distinct from every session
+ *  state palette so the bottom edge reads as an overlay, not part of the state. */
+const PERMISSION_EDGE: Record<string, string> = {
+  bypassPermissions: "#d9645f",
+  plan: "#a78bfa",
+};
+const BG_EDGE_COLOR = "#6b7280";
+
+/** Recolours the bottom edge of the border (including both lower corners). */
+function renderBottomEdge(color: string | undefined): string {
+  if (!color) return "";
+  const r = BORDER_RADIUS;
+  const left = BORDER_INSET;
+  const right = BORDER_INSET + BORDER_SIZE;
+  const bottom = BORDER_INSET + BORDER_SIZE;
+  return `<path d="M${left} ${bottom - r} A${r} ${r} 0 0 0 ${left + r} ${bottom} H${right - r} A${r} ${r} 0 0 0 ${right} ${bottom - r}" fill="none" stroke="${color}" stroke-width="${BORDER_STROKE}" stroke-linecap="round"/>`;
 }
 
-export function renderIcon({ state, slot, label, frame = 0, now, todos }: IconOptions): string {
+/** "+N" running background tasks, so an idle slot still shows work isn't done.
+ *  Left margin at motif height: the label bands never reach it, and the widest
+ *  motif (compacting) starts at x=35, clear of a two-digit count. */
+function renderBgRunningBadge(count: number, accent: string): string {
+  return `<text x="13" y="76" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11" font-weight="700" fill="${accent}" opacity="0.85" text-anchor="start">+${count}</text>`;
+}
+
+export function renderIcon({ state, slot, label, frame = 0, now, todos, bgRunning, permissionMode }: IconOptions): string {
   const t = now ?? Date.now();
   const { bg, accent, label: labelColor } = STATES[state].palette;
-  const slotText = state === "empty" ? "" : String(slot);
   const isEmpty = state === "empty";
   const { top, line1, line2 } = isEmpty
     ? { top: "free slot", line1: "", line2: "" }
@@ -121,8 +147,16 @@ export function renderIcon({ state, slot, label, frame = 0, now, todos }: IconOp
       })
     : "";
 
-  // Slot number badge — inside the safe zone, away from the rounded corner.
-  const slotBadge = isEmpty ? "" : renderSlotBadge(slotText, accent);
+  // Both overlays are interactive-session-only: bg_* states never carry
+  // permissionMode/bgRunning (bg sessions skip the hook pipeline entirely).
+  const interactive = !isEmpty && !isBgState(state);
+  const edgeColor = isBgState(state)
+    ? BG_EDGE_COLOR
+    : interactive && permissionMode !== undefined
+      ? PERMISSION_EDGE[permissionMode]
+      : undefined;
+  const bottomEdge = renderBottomEdge(edgeColor);
+  const bgRunningBadge = interactive && bgRunning !== undefined && bgRunning > 0 ? renderBgRunningBadge(bgRunning, accent) : "";
 
   let pulseOverlay = "";
   if (STATES[state].pulseBg) {
@@ -140,12 +174,13 @@ export function renderIcon({ state, slot, label, frame = 0, now, todos }: IconOp
 <rect width="144" height="144" fill="${bg}"/>
 ${pulseOverlay}
 <rect x="${BORDER_INSET}" y="${BORDER_INSET}" width="${BORDER_SIZE}" height="${BORDER_SIZE}" rx="${BORDER_RADIUS}" fill="none" stroke="${accent}" stroke-width="${BORDER_STROKE}" stroke-linejoin="round" opacity="${isEmpty ? "0.45" : "0.95"}"/>
-${slotBadge}
+${bottomEdge}
 ${topLine}
 <g transform="translate(0,${MOTIF_DY})">${STATES[state].motif(frame, accent)}</g>
 ${line1Svg}
 ${line2Svg}
 ${todoColumn}
+${bgRunningBadge}
 </svg>`;
 }
 
@@ -200,15 +235,37 @@ export function renderKillArming({ slot, label, progress, now }: KillArmingOptio
     now: t,
     idSuffix: `k${slot}`,
   });
-  const slotBadge = renderSlotBadge(String(slot), KILL_ACCENT);
   return `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">
 <rect width="144" height="144" fill="${KILL_BG}"/>
 <rect width="144" height="144" fill="${KILL_ACCENT}" opacity="${overlayOpacity}"/>
 <rect x="${BORDER_INSET}" y="${BORDER_INSET}" width="${BORDER_SIZE}" height="${BORDER_SIZE}" rx="${BORDER_RADIUS}" fill="none" stroke="${KILL_ACCENT}" stroke-width="${BORDER_STROKE}" stroke-linejoin="round" opacity="0.95"/>
-${slotBadge}
 ${topLine}
 <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#3a1414" stroke-width="6"/>
 <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${KILL_ACCENT}" stroke-width="6" stroke-linecap="round" stroke-dasharray="${circ.toFixed(2)}" stroke-dashoffset="${offset}" transform="rotate(-90 ${cx} ${cy})"/>
 <text x="${cx}" y="${cy + 6}" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="17" font-weight="700" fill="${KILL_ACCENT}" text-anchor="middle">KILL</text>
+</svg>`;
+}
+
+/** Palette pour le badge "hooks mal configurés" sur la touche Setup — ambre
+ *  caution, distinct du rouge error/kill (ce n'est pas un crash, juste une
+ *  install à relancer). Hors registre STATES : la touche Setup n'est pas une
+ *  session. Voir hook-check.ts + setup-action.ts. */
+const HOOK_WARN_BG = "#1a1205";
+const HOOK_WARN_ACCENT = "#f59e0b";
+
+/** Tuile statique posée sur la touche Setup quand checkHooks() détecte une
+ *  config de hook périmée/absente : triangle d'alerte + "HOOKS". Statique à
+ *  dessein — la touche Setup n'est pas dans la boucle d'animation. */
+export function renderHookWarning(): string {
+  const a = HOOK_WARN_ACCENT;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">
+<rect width="144" height="144" fill="${HOOK_WARN_BG}"/>
+<rect width="144" height="144" fill="${a}" opacity="0.12"/>
+<rect x="${BORDER_INSET}" y="${BORDER_INSET}" width="${BORDER_SIZE}" height="${BORDER_SIZE}" rx="${BORDER_RADIUS}" fill="none" stroke="${a}" stroke-width="${BORDER_STROKE}" stroke-linejoin="round" opacity="0.95"/>
+<text x="72" y="30" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11" font-weight="700" fill="${a}" opacity="0.8" text-anchor="middle">SETUP</text>
+<path d="M72 48 L104 100 L40 100 Z" fill="none" stroke="${a}" stroke-width="6" stroke-linejoin="round"/>
+<rect x="69" y="66" width="6" height="20" rx="3" fill="${a}"/>
+<circle cx="72" cy="94" r="3.5" fill="${a}"/>
+<text x="72" y="128" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="16" font-weight="700" fill="${a}" text-anchor="middle">HOOKS</text>
 </svg>`;
 }

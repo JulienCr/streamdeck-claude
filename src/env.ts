@@ -44,12 +44,17 @@ export const WIN_HOME = platform() === "win32"
 /** Where Claude Code stores per-pid session JSON, viewed from the WSL side. */
 export const WSL_SESSIONS_DIR = join(WSL_HOME, ".claude", "sessions");
 export const WSL_RELOAD_FILE = join(WSL_HOME, ".claude", ".streamdeck-claude.reload");
+/** Claude Code user-global settings.json (where install-hook.sh writes the hook). */
+export const WSL_SETTINGS_FILE = join(WSL_HOME, ".claude", "settings.json");
 
-/** Same dir, but as a UNC path the Windows-side plugin can read. */
+/** Same paths, but as UNC the Windows-side plugin can read. */
 export const WSL_SESSIONS_DIR_FROM_WIN =
   `\\\\wsl.localhost\\${WSL_DISTRO}${WSL_HOME.replace(/\//g, "\\")}\\.claude\\sessions`;
 export const WSL_RELOAD_FILE_FROM_WIN =
   `\\\\wsl.localhost\\${WSL_DISTRO}${WSL_HOME.replace(/\//g, "\\")}\\.claude\\.streamdeck-claude.reload`;
+export const WSL_SETTINGS_FILE_FROM_WIN =
+  `\\\\wsl.localhost\\${WSL_DISTRO}${WSL_HOME.replace(/\//g, "\\")}\\.claude\\settings.json`;
 
-/** Windows-native sessions dir (no WSL involved). */
+/** Windows-native sessions dir + settings.json (no WSL involved). */
 export const WIN_SESSIONS_DIR = `${WIN_HOME}\\.claude\\sessions`;
+export const WIN_SETTINGS_FILE = `${WIN_HOME}\\.claude\\settings.json`;

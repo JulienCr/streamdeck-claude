@@ -19,25 +19,58 @@ Every registered Claude Code hook event appends one JSON line to `~/.claude/sess
 
 | Hook event | Effect on state |
 |---|---|
-| `SessionStart` | truncates the log + resets state |
+| `SessionStart` | truncates the log + resets state, then records the `term` stamp as `terminal` |
+| `SessionStart[source=compact]` | preserves state (mid-turn auto-compaction), including `terminal` (refreshed if the line carries `term`), but clears `compacting` |
 | `Notification[permission_prompt]` | sets `awaitingPermission` (only in-turn) |
-| `Notification[*]` other in-turn types | sets `awaiting` (catch-all for `elicitation_dialog` / unknown / older logs) |
+| `Notification[idle_prompt\|elicitation_dialog\|elicitation_url_dialog\|agent_needs_input]` / undefined | sets `awaiting` (undefined covers older logs / older CC builds) |
+| `Notification[elicitation_complete\|elicitation_response]` | clears `awaiting` |
+| `Notification[quota_auto_resume_fired]` | clears `throttled` (not gated on `inTurn` — fires while idle) |
 | `Notification` post-Stop (`idle_prompt`) | ignored — filtered by reducer's `inTurn` guard |
-| `Stop` | clears `awaiting` / `awaitingPermission` / `awaitingQuestion` / `awaitingPlan` |
+| `PermissionRequest` | sets `awaitingPermission` (not gated on `inTurn` — always a real dialog) |
+| `PreCompact` | sets `compacting` |
+| `PostCompact` | clears `compacting` |
+| `Stop` | clears `awaiting` / `awaitingPermission` / `awaitingQuestion` / `awaitingPlan` / `compacting` |
 | `PreToolUse[ExitPlanMode]` | sets `awaitingPlan` |
-| `PostToolUse[ExitPlanMode]` | clears `awaitingPlan` |
+| `PostToolUse[ExitPlanMode]` / `PostToolUseFailure[ExitPlanMode]` | clears `awaitingPlan` |
 | `PreToolUse[AskUserQuestion]` | sets `awaitingQuestion` |
-| `PostToolUse[AskUserQuestion]` | clears `awaitingQuestion` |
-| `StopFailure` | sets `errored` |
-| `UserPromptSubmit` | clears all `awaiting*` flags + `errored` |
-| `SubagentStart` / `SubagentStop` | bumps `subagentDepth` ±1 |
+| `PostToolUse[AskUserQuestion]` / `PostToolUseFailure[AskUserQuestion]` | clears `awaitingQuestion` |
+| `StopFailure[rate_limit\|overloaded]` | sets `throttled` (auto-retry, not a real error) |
+| `StopFailure` (other/absent `error_type`) | sets `errored` |
+| `UserPromptSubmit` | clears all `awaiting*` flags + `errored` + `throttled` + the subagent id set (not `bgRunning` — background work outlives turns) |
+| `SubagentStart` | adds `agentId` to the active-subagent set (or bumps a legacy +1 depth counter if the line predates `agentId`) |
+| `SubagentStop` | removes `agentId` from the set **only if present there** — most `SubagentStop` lines carry a unique `agentId` with no matching `SubagentStart` (CC-internal agents) and must not be treated as ending a real subagent |
 | `SessionEnd` | unlinks the log |
 
 The `notification_type` discrimination requires hooks to capture CC's `notification_type` field into the NDJSON `notifType` column — both `notification.sh` and `notification.ps1` already do this. Older logs without `notifType` fall through to plain `awaiting` (catch-all), so the regression risk is bounded.
 
+### Event log line schema
+
+Each NDJSON line is `{ts, event}` plus whichever of these apply (all optional, omitted rather than `null`):
+
+| Field | Source | Notes |
+|---|---|---|
+| `tool` | `tool_name` | PreToolUse/PostToolUse/PostToolUseFailure |
+| `notifType` | `notification_type` | Notification only |
+| `source` | `source` | SessionStart only |
+| `term` | hook environment (`TERM_PROGRAM`, `VSCODE_PID`, `VSCODE_GIT_IPC_HANDLE`), not the payload | SessionStart only, `compact` included: `vscode`/`warp`/`iterm`/`other`. Drives [slot-press focus](vscode-focus.md) |
+| `errorType` | `error_type` | StopFailure only |
+| `todos` | `tool_input.todos[*].status` | PostToolUse[TodoWrite] only |
+| `agentId` | `agent_id` | Present when the event fired inside a subagent — logged under the **parent** session_id regardless |
+| `agentType` | `agent_type` | Alongside `agentId`; empty/absent for CC-internal agents |
+| `mode` | `permission_mode` | Every event carries this; the reducer only trusts it from a main-thread (no `agentId`) event |
+| `bgRunning` | `background_tasks` | Stop/SubagentStop only, and only when the payload has the field at all — count of entries with `status: "running"` |
+
+### Subagent tracking
+
+`SubagentStart`/`SubagentStop` no longer drive a single depth counter. The reducer keeps a set of active foreground subagent ids (added on `SubagentStart{agentId}`, removed on the matching `SubagentStop{agentId}`) plus a legacy +1/-1 counter for pre-`agentId` log lines. `subagentActive` (exposed on `DerivedState`/`SessionInfo`) is true when either is non-empty/positive. This fixes a real bug: CC emits far more `SubagentStop` than `SubagentStart` (internal agents with a unique `agentId` and no start event), and the old depth-1-per-stop logic made a real running subagent's icon disappear early.
+
+A parallel-agent-safe permission lock rides alongside this: `Notification[permission_prompt]` and `PermissionRequest` record which agent (`agentId`, or `"main"`) raised the prompt. `PreToolUse`/`PostToolUse`/`PostToolUseFailure` only clear `awaitingPermission` when their own `agentId` matches — a subagent B's tool call must not clear subagent A's padlock. `Stop`/`UserPromptSubmit` still clear it unconditionally (turn boundary). `awaitingPlan`/`awaitingQuestion` are unaffected — `ExitPlanMode`/`AskUserQuestion` from a subagent still count, since the user must answer either way.
+
 `PreToolUse` and `PostToolUse` are registered with **empty matcher** (catch-all), so the NDJSON gets one line per tool call. The reducer dispatches by `tool_name` — only `ExitPlanMode`, `AskUserQuestion`, and `TodoWrite` produce state transitions; other tools are no-ops. The trade-off is bigger logs (~1 line per Bash/Edit/Read), but `SessionStart` truncates so it stays bounded per CC run.
 
-To add a new state: register the event in `scripts/install-hook.sh`, add a case in `src/session-events.ts`, and an entry in the `STATES` registry at `src/icons/states.ts`. State priority (see `deriveState()` in `src/sessions.ts`): `finished` > `error` > `awaiting_plan` > `awaiting_permission` > `awaiting_question` > `awaiting` > `subagent` > `working` > `idle`. All `awaiting*` flags win over `busy` because CC keeps the session marked busy while waiting on the user.
+The catch-all matcher is load-bearing: `awaitingPermission` is cleared by *any* `PreToolUse`/`PostToolUse` mid-turn (`session-events.ts`), so a permission padlock only clears once a normal tool runs after approval. If a stale `settings.json` registers these tool-specific (the pre-`9dc606c` `ExitPlanMode`/`TodoWrite` matchers) instead, `PostToolUse[Bash]` never fires and the padlock stays stuck until the turn ends. `src/hook-check.ts` guards against exactly this: it verifies the catch-all registration at startup (and on Setup-key appear) and surfaces a warning rather than letting the plugin degrade silently.
+
+To add a new state: register the event in `scripts/install-hook.sh`, add a case in `src/session-events.ts`, and an entry in the `STATES` registry at `src/icons/states.ts`. State priority (see `deriveState()` in `src/sessions.ts`): `finished` > `error` > `throttled` > `awaiting_plan` > `awaiting_permission` > `awaiting_question` > `awaiting` > `compacting` > `subagent` > `working` > `idle`. All `awaiting*` flags win over `busy` because CC keeps the session marked busy while waiting on the user.
 
 ## Path / environment resolution
 
@@ -69,7 +102,7 @@ Icon code is split per concern across `src/icons/`:
 - `motifs.ts` — animated SVG fragments per state
 - `states.ts` — the single `STATES` registry mapping each `SessionState` to palette + motif + animation flag
 - `text.ts` — label splitting + marquee
-- `render.ts` — composes the final SVG
+- `render.ts` — composes the final SVG, including two overlay badges drawn on interactive-session states only (never on `bg_*`, which don't carry these fields): a left-edge `+N` (motif height) for `bgRunning > 0`, and a recoloured bottom border edge for `permissionMode` (`bypassPermissions`/`plan` only — other modes render nothing)
 
 ## Reload trigger
 
@@ -84,7 +117,7 @@ Two thin hook scripts mirror each other:
 - `hooks/notification.sh` — Bash, called by Claude Code on Linux/macOS/WSL.
 - `hooks/notification.ps1` — PowerShell, called by Claude Code on Windows.
 
-Both do exactly one thing: read the hook payload from stdin, extract `session_id` + `hook_event_name` (+ optional `tool_name`), and append a single JSON line — `{"ts":…,"event":…,"tool":…?}` — to `<sessionId>.events.ndjson` next to that side's session JSON files. `SessionStart` truncates the log first; `SessionEnd` unlinks it.
+Both do exactly one thing: read the hook payload from stdin, extract `session_id` + `hook_event_name` (+ the optional fields in [Event log line schema](#event-log-line-schema) above), and append a single compact JSON line to `<sessionId>.events.ndjson` next to that side's session JSON files. `SessionStart` truncates the log first (except `source=compact`); `SessionEnd` unlinks it.
 
 The Windows hook is **not copied** — `scripts/install-hook.sh --target=windows` registers a PowerShell command that runs `hooks/notification.ps1` directly over `\\wsl.localhost\<distro>\…\hooks\notification.ps1`, so a single repo edit propagates to both sides. PID liveness handles the case where a CC process dies hard (no `SessionEnd`): the session disappears from display via `state-tracker.ts`'s `prevLiveIds` check, and the orphan event log is cleaned the next time CC reuses that sessionId (`SessionStart` truncate).
 
@@ -109,6 +142,11 @@ The Windows hook is **not copied** — `scripts/install-hook.sh --target=windows
 │   ├── render-loop.ts                    # zip slots → setImage
 │   ├── env.ts                            # all path/UNC math (single source)
 │   ├── reload-watcher.ts                 # mtime-driven self-restart
+│   ├── terminal-focus.ts                 # slot-press dispatch by terminal kind
+│   ├── terminal-kind.ts                  # canonical `term` values
+│   ├── vscode-focus.ts                   # platform dispatcher (-mac / -win backends)
+│   ├── vscode-window-match.ts            # window-title scoring
+│   ├── win32-raise.ts                    # shared Win32 foreground helpers
 │   ├── warp-focus.ts                     # platform dispatcher
 │   ├── warp-focus-mac.ts                 # osascript activate + Cmd+digit / cycle
 │   ├── warp-focus-win.ts                 # PowerShell + AttachThreadInput + SendInput
@@ -121,6 +159,7 @@ The Windows hook is **not copied** — `scripts/install-hook.sh --target=windows
 │   └── notification.ps1                  # PowerShell hook (Windows)
 └── scripts/
     ├── install-hook.sh                   # merge hook into ~/.claude/settings.json
+    ├── check-vscode.ts                   # list VS Code windows + show the match for a cwd
     ├── link-plugin.sh                    # Windows symlink (mklink /D over UNC target)
     ├── unlink-plugin.sh                  # remove the symlink
     ├── reload-plugin.sh                  # touch the reload trigger
