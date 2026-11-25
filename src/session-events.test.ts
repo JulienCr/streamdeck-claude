@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { reduceEvents, type SessionEvent } from "./session-events.js";
+import { parseEventLog, reduceEvents, type SessionEvent } from "./session-events.js";
 
 function ev(event: string, extra: Partial<SessionEvent> = {}): SessionEvent {
   return { ts: 0, event, ...extra };
@@ -61,6 +61,7 @@ test("SessionStart with no source still resets state", () => {
     bgRunning: 0,
     permissionMode: undefined,
     todos: [],
+    terminal: "unknown",
   });
 });
 
@@ -164,4 +165,47 @@ test("permissionMode tracks main-thread events only, ignoring subagent-scoped mo
     ev("PreToolUse", { tool: "Bash", mode: "plan" }),
   ]);
   assert.equal(state.permissionMode, "plan");
+});
+
+test("SessionStart term is reduced into DerivedState.terminal", () => {
+  const log = JSON.stringify({ ts: 1, event: "SessionStart", term: "vscode" });
+  assert.equal(reduceEvents(parseEventLog(log)).terminal, "vscode");
+});
+
+test("terminal carries through a turn (UserPromptSubmit/Stop preserve it)", () => {
+  const log = [
+    { ts: 1, event: "SessionStart", term: "warp" },
+    { ts: 2, event: "UserPromptSubmit" },
+    { ts: 3, event: "Stop" },
+  ]
+    .map((e) => JSON.stringify(e))
+    .join("\n");
+  assert.equal(reduceEvents(parseEventLog(log)).terminal, "warp");
+});
+
+test("absent term defaults to 'unknown'", () => {
+  const log = JSON.stringify({ ts: 1, event: "SessionStart" });
+  assert.equal(reduceEvents(parseEventLog(log)).terminal, "unknown");
+});
+
+test("an unrecognised term value is coerced to 'unknown'", () => {
+  const log = JSON.stringify({ ts: 1, event: "SessionStart", term: "kitty" });
+  assert.equal(reduceEvents(parseEventLog(log)).terminal, "unknown");
+});
+
+test("terminal survives compaction, and a compact stamp restores it after a log wipe", () => {
+  const unstamped = reduceEvents([
+    ev("SessionStart", { term: "warp" }),
+    ev("UserPromptSubmit"),
+    ev("SessionStart", { source: "compact" }),
+  ]);
+  assert.equal(unstamped.terminal, "warp");
+
+  const wiped = reduceEvents(parseEventLog(JSON.stringify({ ts: 1, event: "SessionStart", source: "compact", term: "vscode" })));
+  assert.equal(wiped.terminal, "vscode");
+});
+
+test("a UTF-8 BOM (Windows PowerShell 5.1) does not drop the SessionStart term", () => {
+  const log = "﻿" + JSON.stringify({ ts: 1, event: "SessionStart", term: "vscode" }) + "\r\n";
+  assert.equal(reduceEvents(parseEventLog(log)).terminal, "vscode");
 });

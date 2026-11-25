@@ -53,6 +53,22 @@ if [ "$EVENT" = "SessionStart" ] && [ "$SOURCE" != "compact" ]; then
   : > "$TARGET"
 fi
 
+# Terminal host, captured once at SessionStart for the focus-on-press feature.
+# $TERM_PROGRAM is set by the terminal; VSCODE_* survive tmux/screen overwriting
+# TERM_PROGRAM with "tmux". Canonical values mirror src/terminal-kind.ts.
+TERM_KIND=""
+if [ "$EVENT" = "SessionStart" ]; then
+  if [ "${TERM_PROGRAM:-}" = "vscode" ] || [ -n "${VSCODE_PID:-}" ] || [ -n "${VSCODE_GIT_IPC_HANDLE:-}" ]; then
+    TERM_KIND="vscode"
+  elif [ "${TERM_PROGRAM:-}" = "WarpTerminal" ]; then
+    TERM_KIND="warp"
+  elif [ "${TERM_PROGRAM:-}" = "iTerm.app" ]; then
+    TERM_KIND="iterm"
+  else
+    TERM_KIND="other"
+  fi
+fi
+
 # jq -nc builds the JSON so embedded quotes/backslashes in tool names can't
 # corrupt the line. Atomic single-write append (line is well under PIPE_BUF).
 # Perl (rather than `date +%s%3N`) because BSD date on macOS doesn't grok %N
@@ -82,6 +98,7 @@ jq -nc \
   --arg event "$EVENT" \
   --arg tool "$TOOL_NAME" \
   --arg notifType "$NOTIF_TYPE" \
+  --arg term "$TERM_KIND" \
   --arg source "$SOURCE" \
   --arg errorType "$ERROR_TYPE" \
   --arg agentId "$AGENT_ID" \
@@ -97,6 +114,7 @@ jq -nc \
    | (if $agentId   != ""   then . + {agentId:   $agentId}   else . end)
    | (if $agentType != ""   then . + {agentType: $agentType} else . end)
    | (if $mode      != ""   then . + {mode:      $mode}      else . end)
+   | (if $term      != ""   then . + {term:      $term}      else . end)
    | (if $todos     != null then . + {todos:     $todos}     else . end)
    | (if $bgRunning != null then . + {bgRunning: $bgRunning} else . end)' \
   >> "$TARGET"

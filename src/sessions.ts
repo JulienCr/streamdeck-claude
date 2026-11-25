@@ -3,6 +3,7 @@ import { platform } from "node:os";
 import { join } from "node:path";
 import streamDeck from "@elgato/streamdeck";
 import type { SessionState } from "./icons/index.js";
+import type { TerminalKind } from "./terminal-kind.js";
 import { WIN_SESSIONS_DIR, WSL_SESSIONS_DIR, WSL_SESSIONS_DIR_FROM_WIN } from "./env.js";
 import { parseEventLog, reduceEvents, type DerivedState, type TodoStatus } from "./session-events.js";
 
@@ -101,6 +102,8 @@ export interface SessionInfo {
   /** Snapshot of the last TodoWrite call's statuses; empty if none seen. */
   todos: TodoStatus[];
   origin: SessionOrigin;
+  /** Terminal host (from the event-log SessionStart stamp); drives slot-press focus. */
+  terminal: TerminalKind;
   /** "interactive" par défaut si le json n'a pas de champ `kind`. */
   kind: "interactive" | "bg";
   /** Statut brut NON coercé du json pour les bg (ex. "waiting", "running"). undefined pour interactive ; à ne pas confondre avec rawStatus (coercé "busy"|"idle", inutilisé pour les bg). */
@@ -156,7 +159,7 @@ async function readOneSource(src: SessionSourceDir): Promise<SessionInfo[]> {
         const kind: "interactive" | "bg" = raw.kind === "bg" ? "bg" : "interactive";
 
         let derived: DerivedState = {
-          awaiting: false, awaitingPermission: false, awaitingQuestion: false, awaitingPlan: false, errored: false, throttled: false, compacting: false, subagentActive: false, bgRunning: 0, todos: [],
+          awaiting: false, awaitingPermission: false, awaitingQuestion: false, awaitingPlan: false, errored: false, throttled: false, compacting: false, subagentActive: false, bgRunning: 0, todos: [], terminal: "unknown",
         };
         // Un agent bg tourne en headless et ne nourrit pas le pipeline de hooks :
         // son json (status/waitingFor) est la source de vérité. On saute donc
@@ -207,6 +210,7 @@ async function readOneSource(src: SessionSourceDir): Promise<SessionInfo[]> {
           permissionMode: derived.permissionMode,
           todos: derived.todos,
           origin: src.origin,
+          terminal: derived.terminal,
         });
       }),
   );

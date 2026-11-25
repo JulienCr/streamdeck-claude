@@ -19,8 +19,8 @@ Every registered Claude Code hook event appends one JSON line to `~/.claude/sess
 
 | Hook event | Effect on state |
 |---|---|
-| `SessionStart` | truncates the log + resets state |
-| `SessionStart[source=compact]` | preserves state (mid-turn auto-compaction) but clears `compacting` |
+| `SessionStart` | truncates the log + resets state, then records the `term` stamp as `terminal` |
+| `SessionStart[source=compact]` | preserves state (mid-turn auto-compaction), including `terminal` (refreshed if the line carries `term`), but clears `compacting` |
 | `Notification[permission_prompt]` | sets `awaitingPermission` (only in-turn) |
 | `Notification[idle_prompt\|elicitation_dialog\|elicitation_url_dialog\|agent_needs_input]` / undefined | sets `awaiting` (undefined covers older logs / older CC builds) |
 | `Notification[elicitation_complete\|elicitation_response]` | clears `awaiting` |
@@ -45,13 +45,14 @@ The `notification_type` discrimination requires hooks to capture CC's `notificat
 
 ### Event log line schema
 
-Each NDJSON line is `{ts, event}` plus whichever of these the hook payload actually carried (all optional, omitted rather than `null`):
+Each NDJSON line is `{ts, event}` plus whichever of these apply (all optional, omitted rather than `null`):
 
 | Field | Source | Notes |
 |---|---|---|
 | `tool` | `tool_name` | PreToolUse/PostToolUse/PostToolUseFailure |
 | `notifType` | `notification_type` | Notification only |
 | `source` | `source` | SessionStart only |
+| `term` | hook environment (`TERM_PROGRAM`, `VSCODE_PID`, `VSCODE_GIT_IPC_HANDLE`), not the payload | SessionStart only, `compact` included: `vscode`/`warp`/`iterm`/`other`. Drives [slot-press focus](vscode-focus.md) |
 | `errorType` | `error_type` | StopFailure only |
 | `todos` | `tool_input.todos[*].status` | PostToolUse[TodoWrite] only |
 | `agentId` | `agent_id` | Present when the event fired inside a subagent — logged under the **parent** session_id regardless |
@@ -116,7 +117,7 @@ Two thin hook scripts mirror each other:
 - `hooks/notification.sh` — Bash, called by Claude Code on Linux/macOS/WSL.
 - `hooks/notification.ps1` — PowerShell, called by Claude Code on Windows.
 
-Both do exactly one thing: read the hook payload from stdin, extract `session_id` + `hook_event_name` (+ the optional fields in [Event log line schema](#event-log-line-schema) above), and append a single compact JSON line to `<sessionId>.events.ndjson` next to that side's session JSON files. `SessionStart` truncates the log first; `SessionEnd` unlinks it.
+Both do exactly one thing: read the hook payload from stdin, extract `session_id` + `hook_event_name` (+ the optional fields in [Event log line schema](#event-log-line-schema) above), and append a single compact JSON line to `<sessionId>.events.ndjson` next to that side's session JSON files. `SessionStart` truncates the log first (except `source=compact`); `SessionEnd` unlinks it.
 
 The Windows hook is **not copied** — `scripts/install-hook.sh --target=windows` registers a PowerShell command that runs `hooks/notification.ps1` directly over `\\wsl.localhost\<distro>\…\hooks\notification.ps1`, so a single repo edit propagates to both sides. PID liveness handles the case where a CC process dies hard (no `SessionEnd`): the session disappears from display via `state-tracker.ts`'s `prevLiveIds` check, and the orphan event log is cleaned the next time CC reuses that sessionId (`SessionStart` truncate).
 
@@ -141,6 +142,11 @@ The Windows hook is **not copied** — `scripts/install-hook.sh --target=windows
 │   ├── render-loop.ts                    # zip slots → setImage
 │   ├── env.ts                            # all path/UNC math (single source)
 │   ├── reload-watcher.ts                 # mtime-driven self-restart
+│   ├── terminal-focus.ts                 # slot-press dispatch by terminal kind
+│   ├── terminal-kind.ts                  # canonical `term` values
+│   ├── vscode-focus.ts                   # platform dispatcher (-mac / -win backends)
+│   ├── vscode-window-match.ts            # window-title scoring
+│   ├── win32-raise.ts                    # shared Win32 foreground helpers
 │   ├── warp-focus.ts                     # platform dispatcher
 │   ├── warp-focus-mac.ts                 # osascript activate + Cmd+digit / cycle
 │   ├── warp-focus-win.ts                 # PowerShell + AttachThreadInput + SendInput
@@ -153,6 +159,7 @@ The Windows hook is **not copied** — `scripts/install-hook.sh --target=windows
 │   └── notification.ps1                  # PowerShell hook (Windows)
 └── scripts/
     ├── install-hook.sh                   # merge hook into ~/.claude/settings.json
+    ├── check-vscode.ts                   # list VS Code windows + show the match for a cwd
     ├── link-plugin.sh                    # Windows symlink (mklink /D over UNC target)
     ├── unlink-plugin.sh                  # remove the symlink
     ├── reload-plugin.sh                  # touch the reload trigger

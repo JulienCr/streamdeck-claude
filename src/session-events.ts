@@ -4,6 +4,8 @@
  *  no mtime heuristics, no per-state sidecar files, no race conditions between
  *  drop/rm pairs. Adding a new state = one case in `applyEvent`. */
 
+import { normaliseTerm, type TerminalKind } from "./terminal-kind.js";
+
 export type TodoStatus = "pending" | "in_progress" | "completed";
 const VALID_TODO_STATUS: ReadonlySet<TodoStatus> = new Set(["pending", "in_progress", "completed"]);
 
@@ -33,6 +35,8 @@ export interface SessionEvent {
   /** Present only on Stop/SubagentStop when the payload carries `background_tasks`
    *  — count of entries with status "running" (background subagents/shells). */
   bgRunning?: number;
+  /** Terminal host, present only on the SessionStart line. */
+  term?: string;
 }
 
 /** What the icon needs, derived from the event log. The session's busy/idle
@@ -67,6 +71,8 @@ export interface DerivedState {
   permissionMode?: string;
   /** Most recent TodoWrite snapshot; empty until the agent calls TodoWrite. */
   todos: TodoStatus[];
+  /** Which terminal hosts this session (from the SessionStart hook stamp). */
+  terminal: TerminalKind;
 }
 
 /** Internal accumulator: DerivedState (minus the computed `subagentActive`)
@@ -93,7 +99,7 @@ const ZERO: ReducerState = {
   awaiting: false, awaitingPermission: false, awaitingQuestion: false, awaitingPlan: false,
   errored: false, throttled: false, compacting: false,
   bgRunning: 0, permissionMode: undefined,
-  todos: [], inTurn: false,
+  todos: [], terminal: "unknown", inTurn: false,
   activeSubagents: new Set(), legacySubagentDepth: 0, pendingPermissionAgent: undefined,
 };
 
@@ -133,10 +139,10 @@ function applyEvent(prev: ReducerState, ev: SessionEvent): ReducerState {
 function applyEventCore(state: ReducerState, ev: SessionEvent): ReducerState {
   switch (ev.event) {
     case "SessionStart":
-      // Mid-turn auto-compaction fires SessionStart{source:compact} without a
-      // real turn boundary — preserve state instead of resetting to ZERO. It
-      // still marks the end of the compaction itself, so clear `compacting`.
-      return ev.source === "compact" ? { ...state, compacting: false } : ZERO;
+      // source=compact fires mid-turn: keep state, only end `compacting`. Its
+      // term stamp still applies, so a log wiped earlier regains the terminal.
+      if (ev.source !== "compact") return { ...ZERO, terminal: normaliseTerm(ev.term) };
+      return { ...state, compacting: false, terminal: ev.term ? normaliseTerm(ev.term) : state.terminal };
 
     case "SessionEnd":
       return ZERO;
@@ -250,7 +256,8 @@ function applyEventCore(state: ReducerState, ev: SessionEvent): ReducerState {
  *  write (hook in progress) — silently dropped. */
 export function parseEventLog(text: string): SessionEvent[] {
   const out: SessionEvent[] = [];
-  for (const line of text.split("\n")) {
+  // Windows PowerShell 5.1 writes a UTF-8 BOM, which JSON.parse rejects.
+  for (const line of text.replace(/^\uFEFF/, "").split("\n")) {
     if (!line.trim()) continue;
     try {
       const obj = JSON.parse(line);
@@ -271,6 +278,7 @@ export function parseEventLog(text: string): SessionEvent[] {
           agentType: typeof obj.agentType === "string" ? obj.agentType : undefined,
           mode: typeof obj.mode === "string" ? obj.mode : undefined,
           bgRunning: typeof obj.bgRunning === "number" ? obj.bgRunning : undefined,
+          term: typeof obj.term === "string" ? obj.term : undefined,
         });
       }
     } catch {

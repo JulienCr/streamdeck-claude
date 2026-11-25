@@ -1,11 +1,12 @@
 # Development
 
-There is no test suite and no lint script. Verify a change by running `pnpm build && pnpm sd:validate && pnpm sd:reload`, then watch the logs.
+There is no lint script. Verify a change by running `pnpm test && pnpm build && pnpm sd:validate && pnpm sd:reload`, then watch the logs.
 
 ## pnpm scripts
 
 | Script | What it does |
 |---|---|
+| `pnpm test` | `node:test` suite over `src/*.test.ts` |
 | `pnpm build` | Rollup → `com.julien.claudesessions.sdPlugin/bin/plugin.js` (terser in prod, sourcemaps in watch) |
 | `pnpm watch` | `rollup -w`; auto-touches the reload trigger after each rebuild |
 | `pnpm sd:reload` | Touch `~/.claude/.streamdeck-claude.reload` → plugin self-exits → SD app respawns it (~1 s) |
@@ -18,6 +19,7 @@ There is no test suite and no lint script. Verify a change by running `pnpm buil
 | `pnpm icons:render` | Regenerate `icons/*.svg` reference assets from `src/icons/` |
 | `pnpm icons:static` | Rasterize manifest PNGs from `assets/svg/` via `@resvg/resvg-js` |
 | `pnpm check:hooks` | Diff installed hooks against `scripts/install-hook.sh` to confirm the registration is current |
+| `pnpm check:vscode "<cwd>" [wsl\|windows]` | List VS Code window titles and show which one matches the cwd (raises nothing) |
 
 The plugin also runs this check at runtime (`src/hook-check.ts`): on startup it logs a warning, and the **Setup key** shows an amber `HOOKS` badge, whenever a required event isn't registered catch-all — so stale config (the classic "permission padlock never clears") surfaces instead of silently producing wrong icons.
 

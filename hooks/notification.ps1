@@ -71,6 +71,21 @@ if ($eventName -eq 'SessionStart' -and $source -ne 'compact') {
     Set-Content -Path $target -Value '' -NoNewline -Encoding utf8
 }
 
+# Terminal host, captured once at SessionStart for the focus-on-press feature.
+# Canonical values mirror src/terminal-kind.ts.
+$termKind = ''
+if ($eventName -eq 'SessionStart') {
+    if ($env:TERM_PROGRAM -eq 'vscode' -or $env:VSCODE_PID -or $env:VSCODE_GIT_IPC_HANDLE) {
+        $termKind = 'vscode'
+    } elseif ($env:TERM_PROGRAM -eq 'WarpTerminal') {
+        $termKind = 'warp'
+    } elseif ($env:TERM_PROGRAM -eq 'iTerm.app') {
+        $termKind = 'iterm'
+    } else {
+        $termKind = 'other'
+    }
+}
+
 $ts = [int64](([DateTimeOffset]::UtcNow).ToUnixTimeMilliseconds())
 
 # For TodoWrite, snapshot the list's statuses so the plugin can draw a
@@ -105,6 +120,7 @@ if ($errorType)            { $entry.errorType  = $errorType }
 if ($agentId)              { $entry.agentId    = $agentId }
 if ($agentType)            { $entry.agentType  = $agentType }
 if ($mode)                 { $entry.mode       = $mode }
+if ($termKind)             { $entry.term       = $termKind }
 if ($null -ne $todos)      { $entry.todos      = $todos }
 if ($null -ne $bgRunning)  { $entry.bgRunning  = $bgRunning }
 $line = $entry | ConvertTo-Json -Compress
