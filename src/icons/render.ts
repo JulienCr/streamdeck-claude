@@ -32,6 +32,12 @@ export interface IconOptions {
   now?: number;
   /** TodoWrite snapshot — renders a left-edge progress column when non-empty. */
   todos?: TodoStatus[];
+  /** Count of running background tasks (subagents/shells). Badge shown only
+   *  when > 0, on interactive-session states. */
+  bgRunning?: number;
+  /** Last-seen permission mode. Bottom edge recoloured only for
+   *  bypassPermissions/plan; others render nothing. */
+  permissionMode?: string;
 }
 
 // Left-edge progress column geometry. The column sits at x=2..7, outside the
@@ -72,19 +78,34 @@ function renderTodoColumn(todos: readonly TodoStatus[], frame: number): string {
   return rects.join("");
 }
 
-function renderSlotBadge(slotText: string, accent: string): string {
-  return `<text x="128" y="22" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="10" font-weight="700" fill="${accent}" opacity="0.8" text-anchor="end">${xmlEscape(slotText)}</text>`;
+/** Colours for the two flagged permission modes — distinct from every session
+ *  state palette so the bottom edge reads as an overlay, not part of the state. */
+const PERMISSION_EDGE: Record<string, string> = {
+  bypassPermissions: "#d9645f",
+  plan: "#a78bfa",
+};
+const BG_EDGE_COLOR = "#6b7280";
+
+/** Recolours the bottom edge of the border (including both lower corners). */
+function renderBottomEdge(color: string | undefined): string {
+  if (!color) return "";
+  const r = BORDER_RADIUS;
+  const left = BORDER_INSET;
+  const right = BORDER_INSET + BORDER_SIZE;
+  const bottom = BORDER_INSET + BORDER_SIZE;
+  return `<path d="M${left} ${bottom - r} A${r} ${r} 0 0 0 ${left + r} ${bottom} H${right - r} A${r} ${r} 0 0 0 ${right} ${bottom - r}" fill="none" stroke="${color}" stroke-width="${BORDER_STROKE}" stroke-linecap="round"/>`;
 }
 
-function renderBgBadge(accent: string): string {
-  // Coin haut-gauche : 144-128=16 depuis le bord, miroir exact du badge numéro de slot (haut-droite, x=128) → jamais de collision.
-  return `<text x="16" y="22" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="10" font-weight="700" fill="${accent}" opacity="0.8" text-anchor="start">bg</text>`;
+/** "+N" running background tasks, so an idle slot still shows work isn't done.
+ *  Left margin at motif height: the label bands never reach it, and the widest
+ *  motif (compacting) starts at x=35, clear of a two-digit count. */
+function renderBgRunningBadge(count: number, accent: string): string {
+  return `<text x="13" y="76" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11" font-weight="700" fill="${accent}" opacity="0.85" text-anchor="start">+${count}</text>`;
 }
 
-export function renderIcon({ state, slot, label, frame = 0, now, todos }: IconOptions): string {
+export function renderIcon({ state, slot, label, frame = 0, now, todos, bgRunning, permissionMode }: IconOptions): string {
   const t = now ?? Date.now();
   const { bg, accent, label: labelColor } = STATES[state].palette;
-  const slotText = state === "empty" ? "" : String(slot);
   const isEmpty = state === "empty";
   const { top, line1, line2 } = isEmpty
     ? { top: "free slot", line1: "", line2: "" }
@@ -126,9 +147,16 @@ export function renderIcon({ state, slot, label, frame = 0, now, todos }: IconOp
       })
     : "";
 
-  // Slot number badge — inside the safe zone, away from the rounded corner.
-  const slotBadge = isEmpty ? "" : renderSlotBadge(slotText, accent);
-  const bgBadge = isBgState(state) ? renderBgBadge(accent) : "";
+  // Both overlays are interactive-session-only: bg_* states never carry
+  // permissionMode/bgRunning (bg sessions skip the hook pipeline entirely).
+  const interactive = !isEmpty && !isBgState(state);
+  const edgeColor = isBgState(state)
+    ? BG_EDGE_COLOR
+    : interactive && permissionMode !== undefined
+      ? PERMISSION_EDGE[permissionMode]
+      : undefined;
+  const bottomEdge = renderBottomEdge(edgeColor);
+  const bgRunningBadge = interactive && bgRunning !== undefined && bgRunning > 0 ? renderBgRunningBadge(bgRunning, accent) : "";
 
   let pulseOverlay = "";
   if (STATES[state].pulseBg) {
@@ -146,13 +174,13 @@ export function renderIcon({ state, slot, label, frame = 0, now, todos }: IconOp
 <rect width="144" height="144" fill="${bg}"/>
 ${pulseOverlay}
 <rect x="${BORDER_INSET}" y="${BORDER_INSET}" width="${BORDER_SIZE}" height="${BORDER_SIZE}" rx="${BORDER_RADIUS}" fill="none" stroke="${accent}" stroke-width="${BORDER_STROKE}" stroke-linejoin="round" opacity="${isEmpty ? "0.45" : "0.95"}"/>
-${slotBadge}
-${bgBadge}
+${bottomEdge}
 ${topLine}
 <g transform="translate(0,${MOTIF_DY})">${STATES[state].motif(frame, accent)}</g>
 ${line1Svg}
 ${line2Svg}
 ${todoColumn}
+${bgRunningBadge}
 </svg>`;
 }
 
@@ -207,12 +235,10 @@ export function renderKillArming({ slot, label, progress, now }: KillArmingOptio
     now: t,
     idSuffix: `k${slot}`,
   });
-  const slotBadge = renderSlotBadge(String(slot), KILL_ACCENT);
   return `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">
 <rect width="144" height="144" fill="${KILL_BG}"/>
 <rect width="144" height="144" fill="${KILL_ACCENT}" opacity="${overlayOpacity}"/>
 <rect x="${BORDER_INSET}" y="${BORDER_INSET}" width="${BORDER_SIZE}" height="${BORDER_SIZE}" rx="${BORDER_RADIUS}" fill="none" stroke="${KILL_ACCENT}" stroke-width="${BORDER_STROKE}" stroke-linejoin="round" opacity="0.95"/>
-${slotBadge}
 ${topLine}
 <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#3a1414" stroke-width="6"/>
 <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${KILL_ACCENT}" stroke-width="6" stroke-linecap="round" stroke-dasharray="${circ.toFixed(2)}" stroke-dashoffset="${offset}" transform="rotate(-90 ${cx} ${cy})"/>

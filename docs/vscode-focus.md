@@ -13,9 +13,10 @@ A `SessionStart` hook runs inside the session's shell and stamps a `term` field
 into `<sid>.events.ndjson` (`{"ts":…,"event":"SessionStart","term":"vscode"}`), derived from
 `$TERM_PROGRAM` (plus `VSCODE_PID`/`VSCODE_GIT_IPC_HANDLE`, which survive tmux
 overwriting `TERM_PROGRAM`). The plugin reduces this into `SessionInfo.terminal`
-and dispatches the slot-press focus by kind (`src/terminal-focus.ts`). Sessions
-started before the hook existed are tagged `unknown` and fall back to a
-Warp-then-VS Code attempt.
+and dispatches the slot-press focus by kind (`src/terminal-focus.ts`). The tag
+survives compaction. Sessions without one (started before the hook stamped it,
+or whose log was wiped by a long-press or the Setup key, until their next
+`SessionStart`) are `unknown` and fall back to a Warp-then-VS Code attempt.
 
 ## Matching algorithm
 

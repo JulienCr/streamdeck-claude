@@ -1,6 +1,7 @@
 import {
   awaitingPulse,
   clawdIdleLook,
+  compactingSqueeze,
   emptyDashed,
   errorBolt,
   finishedCheck,
@@ -9,6 +10,7 @@ import {
   questionPulse,
   spinnerArc,
   subagentBranch,
+  throttledClock,
 } from "./motifs.js";
 
 type Palette = { bg: string; accent: string; label: string };
@@ -35,6 +37,13 @@ export const STATES = {
   awaiting_question:   { palette: { bg: "#08191c", accent: "#06b6d4", label: "#a5f3fc" }, animated: true,  pulseBg: true,  motif: questionPulse },
   awaiting_plan:       { palette: { bg: "#15102a", accent: "#a78bfa", label: "#ddd6fe" }, animated: true,  pulseBg: true,  motif: planPulse },
   error:         { palette: { bg: "#1a0a0a", accent: "#ef4444", label: "#fecaca" }, animated: true,  pulseBg: true,  motif: errorBolt },
+  // Amber-brown, deliberately duller/darker than awaiting's orange/amber and
+  // far from error's red — an automatic backoff, not something to act on, so
+  // the calm clock motif skips the pulseBg "needs you" flash entirely.
+  throttled:     { palette: { bg: "#180f02", accent: "#b45309", label: "#fcd34d" }, animated: true,  pulseBg: false, motif: throttledClock },
+  // Teal, distinct from working's amber — an informational "in progress"
+  // state, not urgent, so no pulseBg.
+  compacting:    { palette: { bg: "#04120f", accent: "#2dd4bf", label: "#99f6e4" }, animated: true,  pulseBg: false, motif: compactingSqueeze },
   finished:      { palette: { bg: "#0a1410", accent: "#22c55e", label: "#bbf7d0" }, animated: false, pulseBg: false, motif: finishedCheck },
   bg_working:             { palette: { bg: "#10131a", accent: "#8b9cff", label: "#c7d2fe" }, animated: true,  pulseBg: false, motif: spinnerArc },
   // bg_awaiting* partagent la même palette à dessein : états bg basse priorité, le motif seul les distingue.

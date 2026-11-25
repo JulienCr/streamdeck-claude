@@ -21,6 +21,11 @@ $sessionId = $null
 $eventName = $null
 $toolName  = $null
 $notifType = $null
+$source    = $null
+$errorType = $null
+$agentId   = $null
+$agentType = $null
+$mode      = $null
 if ($payload) {
     try {
         $obj       = $payload | ConvertFrom-Json
@@ -30,6 +35,16 @@ if ($payload) {
         # notification_type is set by CC on Notification events
         # (permission_prompt, idle_prompt, elicitation_dialog, auth_success).
         $notifType = $obj.notification_type
+        # source is set by CC on SessionStart (startup/resume/clear/compact/fork).
+        $source    = $obj.source
+        # error_type is set by CC on StopFailure (rate_limit, overloaded, server_error, ...).
+        $errorType = $obj.error_type
+        # agent_id/agent_type are set when this event fired inside a subagent
+        # (logged under the parent session_id regardless). permission_mode
+        # rides every event.
+        $agentId   = $obj.agent_id
+        $agentType = $obj.agent_type
+        $mode      = $obj.permission_mode
     } catch {
         $sessionId = $null
     }
@@ -50,8 +65,9 @@ if ($eventName -eq 'SessionEnd') {
     exit
 }
 
-# SessionStart: truncate before appending the new entry.
-if ($eventName -eq 'SessionStart') {
+# SessionStart: truncate before appending the new entry, except source=compact
+# (mid-turn auto-compaction) — wiping the log would reset inTurn/awaiting state.
+if ($eventName -eq 'SessionStart' -and $source -ne 'compact') {
     Set-Content -Path $target -Value '' -NoNewline -Encoding utf8
 }
 
@@ -84,13 +100,29 @@ if ($toolName -eq 'TodoWrite') {
     }
 }
 
+# background_tasks is CC's authoritative list of still-running background work
+# — count entries with status "running", only when Stop/SubagentStop actually
+# carries the field (absent property ⇒ left $null, dropped from the line).
+$bgRunning = $null
+if ($eventName -eq 'Stop' -or $eventName -eq 'SubagentStop') {
+    if ($obj.PSObject.Properties.Name -contains 'background_tasks') {
+        $bgRunning = @($obj.background_tasks | Where-Object { $_.status -eq 'running' }).Count
+    }
+}
+
 # Use ConvertTo-Json so embedded quotes/backslashes in tool names get escaped
 # correctly — string interpolation would corrupt the line.
 $entry = [ordered]@{ ts = $ts; event = $eventName }
-if ($toolName)         { $entry.tool      = $toolName }
-if ($notifType)        { $entry.notifType = $notifType }
-if ($termKind)         { $entry.term      = $termKind }
-if ($null -ne $todos)  { $entry.todos     = $todos }
+if ($toolName)             { $entry.tool       = $toolName }
+if ($notifType)            { $entry.notifType  = $notifType }
+if ($source)               { $entry.source     = $source }
+if ($errorType)            { $entry.errorType  = $errorType }
+if ($agentId)              { $entry.agentId    = $agentId }
+if ($agentType)            { $entry.agentType  = $agentType }
+if ($mode)                 { $entry.mode       = $mode }
+if ($termKind)             { $entry.term       = $termKind }
+if ($null -ne $todos)      { $entry.todos      = $todos }
+if ($null -ne $bgRunning)  { $entry.bgRunning  = $bgRunning }
 $line = $entry | ConvertTo-Json -Compress
 
 Add-Content -Path $target -Value $line -Encoding utf8

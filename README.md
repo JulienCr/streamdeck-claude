@@ -18,9 +18,24 @@ Each running `claude` CLI session lights up one key on your deck — project nam
 | <img src="icons/idle.svg" width="64" alt="idle"> | `idle` | Claude is waiting for your next prompt |
 | <img src="icons/awaiting.svg" width="64" alt="awaiting"> | `awaiting` | Permission prompt — your turn |
 | <img src="icons/awaiting_plan.svg" width="64" alt="awaiting_plan"> | `awaiting_plan` | `ExitPlanMode` was called — plan approval pending |
-| <img src="icons/error.svg" width="64" alt="error"> | `error` | Last turn failed (rate limit / auth / server error) |
+| <img src="icons/compacting.svg" width="64" alt="compacting"> | `compacting` | Claude is compacting its context — nothing to do |
+| <img src="icons/throttled.svg" width="64" alt="throttled"> | `throttled` | Rate-limited / overloaded — auto-retrying, nothing to do |
+| <img src="icons/error.svg" width="64" alt="error"> | `error` | Last turn failed (auth / server error) |
 | <img src="icons/finished.svg" width="64" alt="finished"> | `finished` | Session just ended (visible ~3 s, then drops) |
 | <img src="icons/empty.svg" width="64" alt="empty"> | `empty` | No session in this slot |
+
+## Badges
+
+Two subtle overlays ride on top of any interactive-session state, so they're visible whatever the icon underneath:
+
+| | Badge | Meaning |
+|---|---|---|
+| <img src="icons/badge-bg-running.svg" width="64" alt="background tasks running"> | `+N` (left edge) | N background tasks (subagents launched in the background, or shells) are still running — the session isn't actually done even if it looks idle |
+| <img src="icons/badge-bypass.svg" width="64" alt="bypassPermissions mode"> | Bottom edge of the border, soft red | Session is in `bypassPermissions` mode — every tool call runs unconfirmed |
+| <img src="icons/badge-plan.svg" width="64" alt="plan mode"> | Bottom edge of the border, violet | Session is in `plan` mode |
+| <img src="icons/badge-both.svg" width="64" alt="both badges"> | both | Both badges can appear together |
+
+Other permission modes (`default`, `acceptEdits`, `auto`, `dontAsk`) keep the default border — only the two worth a glance at a distance. Background (`bg_*`) sessions get a grey bottom edge.
 
 ## Features
 

@@ -23,17 +23,19 @@ const SESSIONS_DIR = join(homedir(), ".claude", "sessions");
 type DrilledState =
   | "idle" | "working" | "subagent"
   | "awaiting" | "awaiting_permission" | "awaiting_question" | "awaiting_plan"
+  | "compacting" | "throttled"
   | "error" | "finished";
 
 const NON_FINISHED: ReadonlyArray<Exclude<DrilledState, "finished">> = [
   "idle", "working", "subagent",
   "awaiting", "awaiting_permission", "awaiting_question", "awaiting_plan",
+  "compacting", "throttled",
   "error",
 ];
 
 const TOUR_ORDER: ReadonlyArray<DrilledState> = [...NON_FINISHED, "finished"];
 
-type EventLine = { event: string; tool?: string; notifType?: string };
+type EventLine = { event: string; tool?: string; notifType?: string; errorType?: string };
 
 type Step = {
   state: Exclude<DrilledState, "finished">;
@@ -83,6 +85,16 @@ const STEPS: Record<Exclude<DrilledState, "finished">, Step> = {
     state: "awaiting_plan", rawStatus: "idle",
     events: [...inTurn, { event: "PreToolUse", tool: "ExitPlanMode" }],
     hint: "plan motif — ExitPlanMode awaiting approval",
+  },
+  compacting: {
+    state: "compacting", rawStatus: "busy",
+    events: [...inTurn, { event: "PreCompact" }],
+    hint: "compression motif — CC is compacting context mid-turn",
+  },
+  throttled: {
+    state: "throttled", rawStatus: "idle",
+    events: [...inTurn, { event: "StopFailure", errorType: "rate_limit" }],
+    hint: "calm clock motif — StopFailure[rate_limit], auto-retrying",
   },
   error: {
     state: "error", rawStatus: "idle",
