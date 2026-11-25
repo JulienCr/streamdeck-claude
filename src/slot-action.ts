@@ -114,11 +114,11 @@ export class SlotAction extends SingletonAction {
     if (killable) {
       const killTimer = setTimeout(() => {
         this.killTimers.delete(id);
-        // Garde killArmingSince posé pendant le kill pour que l'anneau s'affiche
-        // plein (progress clampé à 1) le temps du SIGTERM, puis le libère — sinon
-        // le dernier frame visible plafonne à ~0.95 avant de disparaître.
+        // The ring stays full until the kill settles. Release only our own arming:
+        // a new press on this key may have re-armed it in the meantime.
+        const armedAt = slot.killArmingSince;
         void this.runKill(ev, pid, sessionId, origin).finally(() => {
-          slot.killArmingSince = undefined;
+          if (slot.killArmingSince === armedAt) slot.killArmingSince = undefined;
         });
       }, KILL_PRESS_MS);
       this.killTimers.set(id, killTimer);
