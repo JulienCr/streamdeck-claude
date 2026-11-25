@@ -4,31 +4,11 @@ import type { WarpFocusResult } from "./warp-focus.js";
 import { TYPES_GUARD, runPowerShell } from "./win32-raise.js";
 
 /**
- * Best-effort focus of the Warp tab corresponding to `cwd` on Windows.
+ * Best-effort focus of the Warp tab for `cwd` on Windows (Warp exposes no focus IPC).
  *
- * Warp Windows exposes no IPC for pane focus (no AppleScript equivalent,
- * no URL action verb until upstream issue #8611 ships). Workaround mirrors
- * the macOS path: read Warp's local sqlite DB to map cwd → window/tab
- * index, then raise a Warp window and inject the per-tab keystroke via
- * Win32 `SendInput`.
- *
- * Two Windows-specific quirks vs. macOS:
- *
- * 1. Warp's "Switch to tab N" binding listens for `Ctrl+VK_NUMPAD<n>`, not
- *    top-row digits. `SendKeys` can't distinguish those — only `SendInput`
- *    with the explicit VK code reaches Warp.
- * 2. The plugin runs as a Stream Deck child process. Its thread doesn't
- *    own the foreground lock when a deck key is pressed (some other app
- *    does — Chrome, VS Code, …), so a bare `SetForegroundWindow` is
- *    silently refused. The `AttachThreadInput` trick attaches our thread's
- *    input queue to the current foreground's, transferring the lock long
- *    enough to raise Warp.
- *
- * Implementation: build a self-contained PowerShell script that
- * Add-Types the user32/kernel32 wrappers, picks the first Warp HWND,
- * does the focus dance, and `SendInput`s the keystroke. Spawn one
- * `powershell.exe -NoProfile -EncodedCommand` per call. Per-call PS warmup
- * (~150–250 ms) is the dominant cost; the DB read is ~25 ms.
+ * Warp's "Switch to tab N" binds `Ctrl+VK_NUMPAD<n>`: only `SendInput` with that VK
+ * works, not `SendKeys` or top-row digits. A bare `SetForegroundWindow` is silently
+ * refused from a Stream Deck child process, hence the `AttachThreadInput` dance.
  */
 export async function focusWarpTabOnWin(cwd: string): Promise<WarpFocusResult> {
   const db = await readWarpPanes();

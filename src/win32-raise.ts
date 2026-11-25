@@ -1,17 +1,10 @@
 import { spawnCapture } from "./spawn-capture.js";
 
 /**
- * Add-Type bundle shared by every Win32 window-raise path (Warp, VS Code, …).
- * The guard skips re-Adding when run twice in the same PS host (irrelevant
- * here since each call spawns a fresh process, but cheap insurance).
+ * Add-Type bundle shared by every Win32 window-raise path.
  *
- * `INPUT` is laid out as a tagged union: the union starts at offset 0 inside
- * `InputUnion` (LayoutKind.Explicit), and the outer struct is Sequential so
- * the type discriminator + union alignment match `sizeof(INPUT)` (40 bytes on
- * x64, 28 on x86 — `Marshal.SizeOf` handles both). `MOUSEINPUT` is wider than
- * `KEYBDINPUT`, so it has to be declared even though only the keyboard variant
- * is used (and only by callers that send keystrokes; raise-only callers ignore
- * `CtrlVk`/`SendInput`).
+ * `MOUSEINPUT` is unused but must stay in the union: it is wider than `KEYBDINPUT`,
+ * and without it `sizeof(INPUT)` is wrong for `SendInput`.
  */
 export const TYPES_GUARD = `if (-not ('W' -as [type])) {
 Add-Type @'
@@ -51,18 +44,11 @@ public class W {
 }`;
 
 /**
- * Run a self-contained PowerShell script via `-EncodedCommand` (base64 of
- * UTF-16-LE) rather than `-Command -` via stdin. Stdin mode trips the parser
- * on multi-line here-strings (the Add-Type block), silently swallowing the
- * script. EncodedCommand sidesteps all quoting/parsing.
+ * Run a PowerShell script via `-EncodedCommand`: stdin mode (`-Command -`) silently
+ * swallows scripts containing multi-line here-strings (the Add-Type block).
  *
- * `-OutputFormat Text` + `$ProgressPreference=SilentlyContinue` suppress the
- * CLIXML progress wrapper PS otherwise emits the first time it loads modules —
- * the wrapper would push the "OK" marker off the trailing position callers
- * look for. Success is signalled by a line starting with `OK`.
- * The full stdout is returned in `out` (not just a boolean) so callers can
- * thread the trailing trace into their focus-result `reason` for runtime
- * visibility.
+ * Text output and silenced progress keep the CLIXML wrapper from displacing the
+ * trailing `OK` line that signals success. `out` is the full stdout, for tracing.
  */
 export async function runPowerShell(
   script: string,

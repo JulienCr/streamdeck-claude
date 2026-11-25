@@ -7,25 +7,12 @@ export interface TitledWindow {
 }
 
 /**
- * Pick the VS Code window whose title best matches `cwd`, or null if none
- * qualifies. Matching is title-based and best-effort: VS Code's default window
- * title contains the workspace name (`${rootName}`) and a `[WSL: <distro>]`
- * marker, but a user can reshape it via `window.title`, and the active editor
- * filename prefixes it. We therefore score on tokens, not exact strings.
+ * Pick the VS Code window whose title best matches `cwd`, or null.
  *
- * A window MUST contain every word of the cwd basename as a token to qualify.
- * Among qualifying windows, additional scoring ranks the best match:
- *   +10  every basename word appears as a token in the title  (REQUIRED to qualify)
- *   + N  N additional cwd path-component words also appear as tokens (tie-break)
- *   + 3  origin is "wsl" and the title carries a [WSL] marker
- *   - 3  origin is "windows" and the title carries a [WSL] marker
- * Highest score wins; ties resolve to the first window; no basename match → null.
- *
- * cwd path components and window titles are tokenized identically (`wordTokens`),
- * so a workspace folder whose name contains spaces or punctuation (e.g.
- * `My Project`) splits into `["my", "project"]` on both sides and can match —
- * rather than producing an unsplittable `"my project"` token that no title
- * (which VS Code renders word-split) could ever carry.
+ * A title must carry every word of the cwd basename to qualify; parent-path words
+ * (+1 each) and the [WSL] marker (+/-3 by origin) only rank qualifiers, so a stray
+ * "dev" or [WSL] on an unrelated window never wins. Ties go to the first window.
+ * Titles are user-reshapable and word-split, so both sides use `wordTokens`.
  */
 export function pickBestWindow<W extends TitledWindow>(
   cwd: string,
@@ -42,11 +29,6 @@ export function pickBestWindow<W extends TitledWindow>(
   let bestScore = 0;
   for (const w of windows) {
     const titleTokens = titleTokenSet(w.title);
-    // The basename is the REQUIRED signal — a window only qualifies if its
-    // title carries *every* word of the cwd's last path component. Path-overlap
-    // and [WSL] bias then only *rank* qualifying windows; they can't manufacture
-    // a match on their own (a stray "dev"/"home" token or a [WSL] marker on an
-    // unrelated window must never win).
     if (!baseTokens.every((t) => titleTokens.has(t))) continue;
     let score = 10;
     for (const t of restTokens) if (titleTokens.has(t)) score += 1;

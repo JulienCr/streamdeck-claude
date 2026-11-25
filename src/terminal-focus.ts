@@ -11,16 +11,9 @@ export interface FocusResult {
 }
 
 /**
- * Dispatch the slot-press focus to the right terminal backend, keyed by the
- * terminal kind stamped at SessionStart. Best-effort throughout — the caller
- * always copies the cwd to the clipboard regardless of the result.
- *
- * - warp    → Warp tab focus (reads Warp's sqlite DB, sends a per-tab keystroke)
- * - vscode  → raise the matching VS Code window (title-based, window-level)
- * - iterm   → not implemented yet (placeholder for the next backend)
- * - other   → bare terminal; nothing to raise
- * - unknown → back-compat: try Warp, then VS Code. Covers sessions that started
- *             before the hook stamp existed or where env detection missed.
+ * Dispatch the slot-press focus by the terminal kind stamped at SessionStart.
+ * Best-effort: the caller copies the cwd to the clipboard regardless.
+ * `unknown` (unstamped or undetected sessions) must keep trying Warp, then VS Code.
  */
 export async function focusTerminalForSession(opts: {
   cwd: string;
