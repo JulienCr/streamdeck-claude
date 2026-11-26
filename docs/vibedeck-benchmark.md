@@ -22,7 +22,7 @@ Scoping decisions taken before writing (they shape every recommendation below):
 
 | Lot | Item | Section |
 |---|---|---|
-| **1** | Spikes first: `agents --json` cost, terminal during a blocking `PermissionRequest`, `AskUserQuestion` via hook, `notification.ps1` cost | §6 |
+| **1** | ~~Spikes first~~ — done, [results](spikes-2026-11.md) | §6 |
 | **1** | Swarm key (no slot reordering) | §4.1 |
 | **1** | Hooks shipped as a Claude Code plugin | §4.3 |
 | **1** | Richer key: tool / branch line, timer, "no session", done flourish | §4.8 |
@@ -139,14 +139,14 @@ explicitly ask consumers not to parse `~/.claude/jobs/*` or `daemon/roster.json`
   call per origin (WSL via `wsl.exe -d <distro> -- claude agents --json`, Windows
   natively). Liveness becomes "listed", and `status`/`state`/`waitingFor` give a
   second opinion on `awaiting`.
-- **Measure first:** spawning the CLI is a Node start (+ `wsl.exe` hop on Windows).
-  Poll the registry every 2–5 s and keep the 1 s tick on the event logs; the existing
-  10 s `CACHE_FALLBACK_MS` pattern applies.
+- **Measured** ([spikes](spikes-2026-11.md) §1): 285 ms native, 830 ms via `wsl.exe`
+  from Windows — poll every 5 s at most. But `<pid>.json` already carries
+  `status: "waiting"` + `waitingFor`, so the status half needs no subprocess at all;
+  what remains is liveness (and `tasklist.exe` costs 2.4 s per call today).
 - Fallback: on non-zero exit / unparseable JSON / missing command, use the current
   path unchanged (it stays the code we have). Log the fallback once.
-- Settles or reframes **#8** (does `status` flip during a mid-turn permission prompt?
-  `agents --json` exposes `waiting` and `waitingFor` explicitly — verify on a real
-  prompt).
+- **#8** settled: during a permission prompt `status` reads `"waiting"`,
+  `waitingFor: "permission prompt"` (verified on a real prompt).
 - Also gives background sessions their documented state instead of our bg heuristics.
 
 ### 4.3 Hooks as a Claude Code plugin
@@ -161,9 +161,10 @@ explicitly ask consumers not to parse `~/.claude/jobs/*` or `daemon/roster.json`
 - Windows: the hook ships inside the plugin cache, so the UNC trick for
   `notification.ps1` disappears. The ps1 still needs to find the sessions dir — same
   logic as today.
-- Latency: VibeDeck measured ~450 ms per PowerShell hook on Windows before moving off
-  it. We run it on every `PreToolUse`/`PostToolUse`. Worth one measurement; if it
-  matches, set `async: true` on the pure-observer events (all but the approval hook).
+- Latency, measured ([spikes](spikes-2026-11.md) §4): `notification.ps1` costs 464 ms
+  per call as installed (VibeDeck: ~450 ms), 136 ms for `notification.sh`. Set
+  `async: true` on the pure-observer events (all but the approval hook): order held
+  in every run.
 - **#10** (sh ↔ ps1 parity test) stays relevant — maybe more, since both now ship.
 
 ### 4.4 Approve / deny from the deck — opt-in, with fallback
@@ -181,12 +182,12 @@ Mechanism (keeps the ndjson decision — files only, no server):
    (or `deny` + `message`); on timeout, exit silently → terminal prompt.
 4. "Always": return `allow` plus the permission suggestion Claude passed in the
    payload (`permission_suggestions` → `updatedPermissions`), so the scope is Claude's
-   own — what VibeDeck calls "keeps Claude's exact provider scope". **Verify the field
-   names on a real payload.**
-5. **Spike to run first:** while a `PermissionRequest` hook is blocking, does the
-   terminal already show the prompt, or nothing? If nothing, the wait must stay short
-   and the deck must make the wait obvious (VibeDeck's "Answer in terminal" exists for
-   that reason).
+   own — what VibeDeck calls "keeps Claude's exact provider scope". Verified: the
+   array varies per command (`addRules` → `localSettings`, or session-only
+   `addDirectories`/`setMode`), so echo it back rather than build a rule.
+5. Verified: while the hook blocks, the terminal already shows the normal prompt and
+   accepts an answer. The wait can be long; the terminal is the fallback by
+   construction.
 
 **Gestures (your note: the press should keep showing the agent).**
 
@@ -214,9 +215,8 @@ Mechanism (keeps the ndjson decision — files only, no server):
   path as §4.4 (Approve / Keep planning).
 - **Answer:** a blocking `PreToolUse` hook on `AskUserQuestion` returning
   `permissionDecision: "allow"` with `updatedInput` carrying the `answers` — the shape
-  the Agent SDK documents for `canUseTool`. **Unverified for hooks: spike first.**
-  Fallback if it fails: focus the terminal and inject the digit keystroke (we already
-  have Win32 keystroke plumbing for Warp).
+  the Agent SDK documents for `canUseTool`. Verified for hooks (answers keyed by
+  question text, [spikes](spikes-2026-11.md) §3) — no keystroke fallback needed.
 - **Profile:** one bundled profile per device size (manifest `Profiles`), switched via
   `switchToProfile` while a prompt waits, switched back when none remain. Keys: up to
   4 options, `Other` (= focus the terminal), `Back`. Mini: ▲ ▼ select. Studio has no
@@ -283,6 +283,8 @@ reducer keyed on event names that Codex's `hooks.json` also emits (`UserPromptSu
 | #4, #5, #7, #9, #11, #12 | unaffected |
 
 ## 6. Spikes before committing to a design
+
+Run 2026-11-26, results in [spikes-2026-11.md](spikes-2026-11.md); spike 5 moved into #32.
 
 1. `claude agents --json`: spawn cost from Windows (native and via `wsl.exe`); does an
    interactive session show `waiting` + `waitingFor` during a permission prompt?
